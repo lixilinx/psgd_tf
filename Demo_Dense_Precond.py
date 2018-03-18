@@ -6,9 +6,9 @@ import time
 import preconditioned_stochastic_gradient_descent as psgd 
 #from data_model_criteria_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_rnn_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
-#from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
+from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_aug_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
-from data_model_criteria_lstm_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
+#from data_model_criteria_lstm_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 
 # PSGD  
 step_size = 0.01 

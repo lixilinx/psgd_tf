@@ -2,17 +2,17 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import time
 
-#from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
+from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 #from data_model_criteria_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
-from data_model_criteria_aug_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
+#from data_model_criteria_aug_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 #from data_model_criteria_cifar10_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 #from data_model_criteria_lstm_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 #from data_model_criteria_cifar10_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 #from data_model_criteria_mnist_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 
 # SGD  
-step_size = 0.1
-grad_norm_clip_thr = 1e10 # may need cliping for RNN training  
+step_size = 0.01
+grad_norm_clip_thr = 1e0 # may need cliping for RNN training  
 
 # begins the iteration here
 with tf.Session() as sess:

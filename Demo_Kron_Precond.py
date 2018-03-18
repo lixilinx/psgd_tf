@@ -5,16 +5,16 @@ import time
 import preconditioned_stochastic_gradient_descent as psgd 
 #from data_model_criteria_aug_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_mnist_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
-#from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
+from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_rnn_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_lstm_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_lstm_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_cifar10_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
-from data_model_criteria_cifar10_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
+#from data_model_criteria_cifar10_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 
 # PSGD  
 step_size = 0.05
-grad_norm_clip_thr = 1e10 # may be necessary for RNN training;  
+grad_norm_clip_thr = 1e0 # may be necessary for RNN training;  
 
 # begins the iteration here
 with tf.Session() as sess:   
@@ -44,7 +44,7 @@ with tf.Session() as sess:
     TrainLoss = list()
     TestLoss = list()
     Time = list()
-    for num_iter in range(50000):    
+    for num_iter in range(20000):    
         _train_inputs, _train_outputs = get_batches( )
     
         t0 = time.time()

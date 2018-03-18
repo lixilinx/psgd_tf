@@ -12,6 +12,7 @@ PSGD extracts the curvature information by inspecting the Hessian-vector product
 Nowdays, automatic differentation toolkits are popular, and it is simple to calculate the Hessian-vector exactly as
 
     (Hessian) * (vector) = gradients of (gradients * vector)
+#### 
 
 
 

@@ -1,4 +1,5 @@
-# Tensorflow implementation of PSGD
+## Tensorflow implementation of PSGD
 
-## Tensorflow implementation for preconditioned stochastic gradient descent 
-### 3
+#### An overview
+PSGD (preconditioned stochastic gradient descent) is a general optimization algorithm. An quick overview is given on https://sites.google.com/site/lixilinx/home/psgd 
+

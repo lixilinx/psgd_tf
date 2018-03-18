@@ -20,7 +20,7 @@ Nowdays, automatic differentation toolkits are popular, and it is simple to calc
 
 * Demo_Dense_Precond.py: demenstrates the usage of a dense preconditioner, and assumes a list of tensor parameters to be optimized. 
 
-* Demo_Dense_Precond_approxHv.py: the same as Demo_Dense_Precond.py, expect that the Hessian-vector product is approximated, which is useful when automatic second-order differentation is not avialable, e.g., tf.while_loop in current tf release.
+* Demo_Dense_Precond_approxHv.py: the same as Demo_Dense_Precond.py, except that the Hessian-vector product is approximated, which is useful when automatic second-order differentation is not avialable, e.g., tf.while_loop in current tf release.
 
 * Demo_ESGD.py: demenstrates the usage of a diagonal preconditioner, and assumes a list of tensor parameters to be optimized.
 

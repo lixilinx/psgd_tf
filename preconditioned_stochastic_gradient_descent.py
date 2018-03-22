@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 * Created on Sat Aug 26 13:58:57 2017
-* Updated in April, 2018
+* Updated in March, 2018: upgrade dense preconditioner so that it can handle a list of tensors 
 
 Tensorflow functions for PSGD (Preconditioned SGD) 
 
@@ -9,8 +9,8 @@ Tensorflow functions for PSGD (Preconditioned SGD)
 """
 import tensorflow as tf
 
-_tiny = 1.2e-38   # to avoid dividing by zero
-_diag_loading = 1e-9   # to avoid numerical difficulty when solving triangular linear system
+_tiny = 1.2e-38         # to avoid dividing by zero
+_diag_loading = 1e-9    # to avoid numerical difficulty when solving triangular linear system
                         # maybe unnecessary, and can be set to 0
 
 ###############################################################################
@@ -19,7 +19,7 @@ def update_precond_dense(Q, dxs, dgs, step=0.01):
     update dense preconditioner P = Q^T*Q
     Q: Cholesky factor of preconditioner
     dxs: a list of random perturbation on parameters
-    dgs: a list of resultant perturbation on gradients; ideally, dg = Hessian * dx
+    dgs: a list of resultant perturbation on gradients
     step: step size
     """
     max_diag = tf.reduce_max(tf.diag_part(Q))
@@ -71,8 +71,7 @@ def update_precond_kron(Ql, Qr, dX, dG, step=0.01):
     Qr: (right side) Cholesky factor of preconditioner
     dX: perturbation of (matrix) parameter
     dG: perturbation of (matrix) gradient
-    step: step size
-    
+    step: step size    
     """
     # diagonal loading maybe unnecessary 
     max_diag_l = tf.reduce_max(tf.diag_part(Ql))
@@ -122,8 +121,9 @@ def precond_grad_kron(Ql, Qr, Grad):
 Kronecker product preconditioner are particularly useful in deep learning since many operations there have form,
     (feature_out) = nonlinearity[ (matrix_to_be_optimized) * (feature_in) ]. 
 
-Still, preconditioners in many other forms, e.g., band limited Q,  are possible.
-Here are two examples of limited-memory preconditioner mentioned in the paper (not extensively tested/studied).   
+Still, preconditioners in many other forms, e.g., digonal, band limited, are possible.
+ESGD is a special case of PSGD with a diagonal Q. It is trivial to update and use a diagonal preconditioner, and we do not provide the sample code. 
+Here are two examples of limited-memory preconditioner mentioned in the paper (not extensively tested/studied, not maintained).   
 """
 ###############################################################################
 def update_precond_type1(d, U, dx, dg, step=0.01):

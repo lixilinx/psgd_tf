@@ -2,7 +2,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import time
 
-#from data_model_criteria_aug_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
+#from data_model_criteria_mnist_lrelu_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_mnist_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_rnn_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
@@ -10,13 +10,13 @@ from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion
 #from data_model_criteria_lstm_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_cifar10_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_cifar10_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
+#from data_model_criteria_cifar10_lrelu_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 
 # RMSProp  
 step_size = 0.0005
 max_mu = 0.99
 offset = 1e-9
          
-# begins the iteration here
 with tf.Session() as sess:
     grads_vars = [tf.Variable(tf.zeros(W.shape, dtype=dtype), trainable=False) for W in Ws]
     mu = tf.Variable(initial_value=0.0, trainable=False, dtype=dtype) # forgetting factor for grads**2 estimation 

@@ -9,12 +9,12 @@ import preconditioned_stochastic_gradient_descent as psgd
 from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_aug_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 #from data_model_criteria_lstm_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
+#from data_model_criteria_lstm_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
 
 # PSGD  
 step_size = 0.01 
-grad_norm_clip_thr = 1e0 
+grad_norm_clip_thr = 1e0    # may need gradient clipping for RNN training; set it to an extremely large number or inf if no need 
          
-# begins the iteration here
 with tf.Session() as sess:
     num_para = sum([np.prod(W.shape.as_list()) for W in Ws])
     Q = tf.Variable(tf.eye(num_para, dtype=dtype), trainable=False)

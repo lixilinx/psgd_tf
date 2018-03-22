@@ -11,31 +11,21 @@ def unpickle(file):
         dict = pickle.load(fo, encoding='bytes')
     return dict
 
-data_dir = 'E:/temp/CIFAR10/cifar-10-batches-py/'   # I put my data here
+data_dir = 'E:/temp/CIFAR10/cifar-10-batches-py/'   # I put my data here; you may need to change it
 
 """ read training image """
 train_images = list()
-labels = list()
 for i in range(1, 6):
     data = unpickle(''.join([data_dir, 'data_batch_', str(i)]))
     train_images.append(data[b'data'])
-    labels.append(data[b'labels'])
 train_images = np.concatenate(train_images)
-labels = np.concatenate(labels)
-train_labels = np.zeros([len(train_images), 10])
-for i in range(len(train_images)):
-    train_labels[i, labels[i]] = 1.0
-
 train_images = train_images.reshape([-1,3,32,32]).transpose([0,2,3,1])
 train_images = train_images/128.0 - 1.0
 
 """ read testing image """
 data = unpickle(''.join([data_dir, 'test_batch']))
 test_images = data[b'data']
-labels = data[b'labels']
-test_labels = labels
-
-test_images = 1.0*test_images.reshape([-1,3,32,32]).transpose([0,2,3,1])
+test_images = test_images.reshape([-1,3,32,32]).transpose([0,2,3,1])
 test_images = test_images/128.0 - 1.0
 ###############################################################################
 
@@ -79,17 +69,17 @@ def model(Ws, inputs):
     x3 = tf.tanh( tf.nn.conv2d(x2, w3, [1,2,2,1], 'SAME') + b3 )
       
     w4 = tf.reshape(W4[:-1], [4, 4, num_f, num_f])
-    w4 = tf.transpose(w4, perm=[0,1,3,2])
+    w4 = tf.transpose(w4, perm=[0,1,3,2]) # transpose here because conv2d_transpose
     b4 = W4[-1]
     x4 = tf.tanh( tf.nn.conv2d_transpose(x3, w4, [batch_size, 8,8,num_f], [1,2,2,1]) + b4 )
     
     w5 = tf.reshape(W5[:-1], [4, 4, num_f, num_f])
-    w5 = tf.transpose(w5, perm=[0,1,3,2])
+    w5 = tf.transpose(w5, perm=[0,1,3,2]) # transpose here because conv2d_transpose
     b5 = W5[-1]
     x5 = tf.tanh( tf.nn.conv2d_transpose(x4, w5, [batch_size, 16,16,num_f], [1,2,2,1]) + b5 )
     
     w6 = tf.reshape(W6[:-1], [4, 4, num_f, 3])
-    w6 = tf.transpose(w6, perm=[0,1,3,2])
+    w6 = tf.transpose(w6, perm=[0,1,3,2]) # transpose here because conv2d_transpose
     b6 = W6[-1]
     x6 = tf.nn.conv2d_transpose(x5, w6, [batch_size, 32,32,3], [1,2,2,1]) + b6
     return x6

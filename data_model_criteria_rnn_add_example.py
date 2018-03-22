@@ -59,20 +59,22 @@ def model(Ws, inputs):
 #                                  lambda i, state: [i+1, tf.tanh(tf.matmul(tf.concat([inputs[i], state, ones], 1), W1))],
 #                                  [0, tf.zeros([batch_size, dim_hidden])],)
     
-    """ Unfortunately, tf.while_loop does not support second order derivative """
+    """ Unfortunately, tf.while_loop does not support second order derivative; so static unrolling"""
     last_state = tf.zeros([batch_size, dim_hidden], dtype=dtype)
     for i in range(seq_len0):
         last_state = tf.tanh(tf.matmul(tf.concat([inputs[i], last_state, ones], 1), W1))
         
     y = tf.matmul(tf.concat((last_state, ones), 1), W2)
     return y
-    
+
+# MSE loss    
 def train_criterion(Ws):
     y = model(Ws, train_inputs)
     return tf.reduce_mean(tf.square(y - train_outputs))
 
 
 test_x, test_y = get_batches(10000)
+# MSE loss
 def test_criterion(Ws):
     y = model(Ws, tf.constant(test_x, dtype=dtype))
     return tf.reduce_mean(tf.square( y - tf.constant(test_y, dtype=dtype) ))

@@ -45,12 +45,14 @@ def model(Ws, inputs):
     y = tf.matmul(tf.concat([x5, ones], 1), W6)
     return y
     
+# MSE loss
 def train_criterion(Ws):
     y = model(Ws, train_inputs)
     return tf.reduce_mean(tf.square( y - train_outputs ))
 
 
 test_data = 2.0*mnist.test.images - 1.0
+# MSE loss
 def test_criterion(Ws):
     y = model(Ws, tf.constant(test_data))
     return tf.reduce_mean(tf.square( y - tf.constant(test_data) ))

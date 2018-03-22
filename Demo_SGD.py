@@ -3,18 +3,18 @@ import matplotlib.pyplot as plt
 import time
 
 from data_model_criteria_rnn_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
-#from data_model_criteria_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs, dtype
-#from data_model_criteria_aug_mnist_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
-#from data_model_criteria_cifar10_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
+#from data_model_criteria_rnn_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs
+#from data_model_criteria_mnist_lrelu_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
+#from data_model_criteria_cifar10_lrelu_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 #from data_model_criteria_lstm_xor_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
+#from data_model_criteria_lstm_add_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs
 #from data_model_criteria_cifar10_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 #from data_model_criteria_mnist_autoencoder_example import get_batches, Ws, train_criterion, test_criterion, train_inputs, train_outputs#, dtype
 
 # SGD  
 step_size = 0.01
-grad_norm_clip_thr = 1e0 # may need cliping for RNN training  
+grad_norm_clip_thr = 1e0 # may need gradients cliping for RNN training; otherwise, set it to an extremely large value  
 
-# begins the iteration here
 with tf.Session() as sess:
     train_loss = train_criterion(Ws)
     grads = tf.gradients(train_loss, Ws)

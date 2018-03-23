@@ -13,10 +13,10 @@ dtype = tf.float32
 
 mnist = tf.contrib.learn.datasets.load_dataset('mnist')
 
-train_data = mnist.train.images
-train_data = np.reshape(2.0*train_data - 1.0, [55000, 28, 28, 1])
-train_label = np.zeros([55000, 10])
-train_label[np.arange(55000), mnist.train.labels] = 1.0
+train_data = np.concatenate((mnist.train.images, mnist.validation.images), 0)
+train_data = np.reshape(2.0*train_data - 1.0, [60000, 28, 28, 1])
+train_label = np.zeros([60000, 10])
+train_label[np.arange(60000), np.concatenate((mnist.train.labels, mnist.validation.labels), 0)] = 1.0
 def get_batches():
     rp = np.random.permutation(train_data.shape[0])
 

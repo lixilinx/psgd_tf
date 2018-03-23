@@ -14,7 +14,8 @@ dtype = tf.float32
 
 mnist = tf.contrib.learn.datasets.load_dataset('mnist')
 
-train_data = 2.0*mnist.train.images - 1.0
+train_data = np.concatenate((mnist.train.images, mnist.validation.images), 0)
+train_data = 2.0*train_data - 1.0
 def get_batches():
     rp = np.random.permutation(train_data.shape[0])
     x = train_data[rp[0:batch_size]]
@@ -51,8 +52,8 @@ def train_criterion(Ws):
     return tf.reduce_mean(tf.square( y - train_outputs ))
 
 
-test_data = 2.0*mnist.test.images - 1.0
+test_data = tf.constant(2.0*mnist.test.images - 1.0, dtype=dtype)
 # MSE loss
 def test_criterion(Ws):
-    y = model(Ws, tf.constant(test_data))
-    return tf.reduce_mean(tf.square( y - tf.constant(test_data) ))
+    y = model(Ws, test_data)
+    return tf.reduce_mean(tf.square(y - test_data))

@@ -90,6 +90,7 @@ def train_criterion(Ws):
     return tf.reduce_mean(tf.square(y - train_outputs))
 
 
+test_data = tf.constant(test_images, dtype=dtype)
 def test_criterion(Ws):
-    y = model(Ws, tf.constant(test_images, dtype=dtype))
-    return tf.reduce_mean(tf.square(y - tf.constant(test_images, dtype=dtype)))
+    y = model(Ws, test_data)
+    return tf.reduce_mean(tf.square(y - test_data))

@@ -1,6 +1,6 @@
 ## Tensorflow implementation of PSGD
 ### An overview
-PSGD (preconditioned stochastic gradient descent) is a general optimization algorithm. An quick overview on its theory is given on https://sites.google.com/site/lixilinx/home/psgd. This package provides tensorflow implementation of PSGD, and application examples.
+PSGD (preconditioned stochastic gradient descent) is a general optimization algorithm. An quick overview of its theory is given on https://sites.google.com/site/lixilinx/home/psgd. This package provides tensorflow implementation of PSGD, and application examples.
 ### Implementation considerations
 This package demenstrates implementations with all the following variations.  
 #### Forms of preconditioner
@@ -10,7 +10,7 @@ Dense preconditioner;
 
 Diagonal preconditioner (PSGD reduces to Equilibrated SGD (ESGD) for this case); 
 
-Kronecker-product preconditioner; 
+Kronecker product preconditioner; 
 
 Two more limited-memory preconditioners, but we do not test them extensively. 
 #### Hessian-vector product calculations
@@ -24,7 +24,9 @@ Exact way: using second-order differentiation to calculated it as
 
     (Hessian) * (vector) = gradient of (gradient * vector)
 ### Further comments on the code files
-* preconditioned_stochastic_gradient_descent.py: provides routines for preconditioners and preconditioned gradients calculations. 
+* preconditioned_stochastic_gradient_descent.py: provides routines for preconditioners and preconditioned gradients calculations.
+
+* hello_psgd.py: a 'hello world' demo for PSGD on Rosenbrock function minimization. 
 
 * Demo_Dense_Precond.py: demenstrates the usage of a dense preconditioner; assumes a list of tensor parameters to be optimized. 
 

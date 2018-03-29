@@ -2,6 +2,10 @@
 """
 * Created on Sat Aug 26 13:58:57 2017
 * Updated in March, 2018: upgrade dense preconditioner so that it can handle a list of tensors 
+* Update in March, 2018: add a SCaling And Normalization (SCAN) preconditioner
+                         Check Section IV.B in http://arxiv.org/abs/1803.09383 for details
+                         Feature normalization is related to a specific form of preconditioner
+                         We further scaling the output features. So I call it SCAN preconditioner
 
 Tensorflow functions for PSGD (Preconditioned SGD) 
 
@@ -112,6 +116,78 @@ def precond_grad_kron(Ql, Qr, Grad):
 
 
 
+
+
+###############################################################################
+# SCAN preconditioner is super sparse, sparser than a diagonal preconditioner! 
+# For an (M, N) matrix, it only requires 2*M+N-1 parameters to represent it
+# Make sure that input feature vector is augmented by 1 at the end, and the affine transformation is given by
+#               y = x*(affine transformation matrix)
+#
+def update_precond_scan(ql, qr, dX, dG, step=0.01):
+    """
+    update SCaling-And-Normalization (SCAN) preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql), where
+    dX and dG have shape (M, N)
+    ql has shape (2, M)
+    qr has shape (1, N)
+    ql[0] is the diagonal part of Ql
+    ql[1,0:-1] is the last column of Ql, excluding the last entry
+    qr is the diagonal part of Qr
+    dX is perturbation of (matrix) parameter
+    dG is perturbation of (matrix) gradient
+    step is the normalized step size in natrual gradient descent  
+    """
+    # diagonal loading is removed, here we just want to make sure that Ql and Qr have similar dynamic range
+    max_l = tf.reduce_max(tf.abs(ql))
+    max_r = tf.reduce_max(qr) # qr always is positive
+    rho = tf.sqrt(max_l/max_r)
+    ql = ql/rho
+    qr = rho*qr
+    
+    # refer to https://arxiv.org/abs/1512.04202 for details
+    A = tf.transpose(ql[0:1])*dG
+    A = A + tf.matmul(tf.transpose(ql[1:]), dG[-1:]) # Ql*dG 
+    A = A*qr # Ql*dG*Qr 
+    
+    Bt = tf.transpose(1.0/ql[0:1])*dX
+    Bt = tf.concat([Bt[:-1], 
+                    Bt[-1:] - tf.matmul(ql[1:]/(ql[0:1]*ql[0,-1]), dX)], axis=0) # Ql^(-T)*dX
+    Bt = Bt*(1.0/qr) # Ql^(-T)*dX*Qr^(-1) 
+    
+    grad1_diag = tf.reduce_sum(A*A, axis=1) - tf.reduce_sum(Bt*Bt, axis=1)
+    grad1_bias = tf.matmul(A[:-1], A[-1:], transpose_b=True) - tf.matmul(Bt[:-1], Bt[-1:], transpose_b=True) 
+    grad1_bias = tf.reshape(grad1_bias, [-1])
+    grad1_bias = tf.concat([grad1_bias, [0.0]], axis=0)  
+
+    step1 = step/(tf.maximum(tf.reduce_max(tf.abs(grad1_diag)), tf.reduce_max(tf.abs(grad1_bias))) + _tiny)
+    new_ql0 = ql[0] - step1*grad1_diag*ql[0]
+    new_ql1 = ql[1] - step1*(grad1_diag*ql[1] + ql[0,-1]*grad1_bias)
+    
+    grad2 = tf.reduce_sum(A*A, axis=0, keepdims=True) - tf.reduce_sum(Bt*Bt, axis=0, keepdims=True)
+    step2 = step/(tf.reduce_max(tf.abs(grad2)) + _tiny)
+    new_qr = qr - step2*grad2*qr
+    
+    return tf.stack((new_ql0, new_ql1)), new_qr
+
+
+
+def precond_grad_scan(ql, qr, Grad):
+    """
+    return preconditioned gradient using SCaling-And-Normalization (SCAN) preconditioner
+    Suppose Grad has shape (M, N)
+    ql: shape (2, M), defines a matrix has the same form as that for input feature normalization 
+    qr: shape (1, N), defines a diagonal matrix for output feature scaling
+    Grad: (matrix) gradient
+    """
+    preG = tf.transpose(ql[0:1])*Grad
+    preG = preG + tf.matmul(tf.transpose(ql[1:]), Grad[-1:]) # Ql*Grad 
+    preG = preG*(qr*qr) # Ql*Grad*Qr^T*Qr
+    add_last_row = tf.matmul(ql[1:], preG) # use it to modify the last row
+    preG = tf.transpose(ql[0:1])*preG
+    preG = tf.concat([preG[:-1],
+                      preG[-1:] + add_last_row], axis=0) # Ql^T*Ql*Grad*Qr^T*Qr
+    
+    return preG
 
 
 

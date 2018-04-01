@@ -1,0 +1,17 @@
+* this table summarizes (step_size, grad_norm_clip_thr) settings for each (method, problem) combination 
+
+
+
+		lstm_xor	cifar_autoencoder	rnn_add		mnist_lrelu	mnist_autoencoder	rnn_xor		lstm_add	cifar_lrelu
+
+SGD		(0.01, 1.0)	(0.2, inf)		(0.02, 1.0)	(0.02, inf)	(0.1, inf)		(0.01, 1.0)	(0.01, 1.0)	(0.05, inf)
+
+RMSProp		(0.0005, inf)	(0.0002, inf)		(0.0002, inf)	(0.0002, inf)	(0.001, inf)		(0.0005, inf)	(0.0001, inf)	(0.001, inf)
+
+PSGD_diag(ESGD)	(0.02, 1.0)	(0.05, inf)		(0.05, 1.0)	(0.01, inf)	(0.05, inf)		(0.01, 1.0)	(0.05, 1.0)	(0.05, inf)
+
+PSGD_scan	(0.02, 1.0)	(0.05, inf)		(0.05, 1.0)	(0.01, inf)	(0.05, inf)		(0.01, 1.0)	(0.05, 1.0)	(0.05, inf)
+
+PSGD_kron	(0.02, 1.0)	(0.05, inf)		(0.05, 1.0)	(0.02, inf)	(0.05, inf)		(0.01, 1.0)	(0.05, 1.0)	(0.1, inf)
+
+PSGD_dense	(0.01, 1.0)				(0.01, 1.0)						(0.01, 1.0)	(0.01, 1.0)

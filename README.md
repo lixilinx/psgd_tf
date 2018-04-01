@@ -2,7 +2,7 @@
 ### An overview
 PSGD (preconditioned stochastic gradient descent) is a general second-order optimization method. An quick review of its theory is given in Section II.B http://arxiv.org/abs/1803.09383. This package provides tensorflow implementations of PSGD and some benchmark problems.
 
-The code works with Tensorflow 1.6 and Python 3.6. Try 'hello_psgd.py' first to see whether it works in your configurations. Run 'Demo_....py' to try different methods. Change its 'data_model_criteria_...' line to load different benchmark problems. You may need to download cifar10 data for two benchmark problems. Proposed (step_size, gradient_norm_clipping_threshold) settings and typical convergence curves are in parameter_settings_and_convergence_curves.zip.     
+The code works with Tensorflow 1.6 and Python 3.6. Try 'hello_psgd.py' first to see whether it works in your configurations. Run 'Demo_....py' to try different methods. Change its 'data_model_criteria_...' line to load different benchmark problems. You may need to download cifar10 data for two benchmark problems. Proposed (step_size, grad_norm_clip_thr) settings and typical convergence curves are in parameter_settings.txt and convergence_curves.pdf, respectively.     
 
 ### Implemented variations of PSGD 
 #### Forms of preconditioner

@@ -11,7 +11,7 @@ We considered: approximate way via numerical differentiation; and exact way usin
 ### A Trick to reduce complexity of PSGD: update preconditioner less frequently
 Curvatures typically evolve slower than gradients. So we can update the preconditioner less frequently by skipping the execution of preconditioner update graph in certain iterations. In this way, PSGD converges as fast as a second-order method, while its wall time per iteration is virtually the same as that of SGD. My personal choice is to update the preconditioner more frequently in early iterations (like once per two or three iterations), and less frequently in later iterations (like once per ten iterations).
 ### Implementations in other languages
-I have some old Matlab and Numpy implementations of PSGD on https://sites.google.com/site/lixilinx/home/psgd. Really outdated, and some code pieces are written in 2015. I may update some of them in the near future.      
+I have some old Matlab and Numpy implementations of PSGD on https://sites.google.com/site/lixilinx/home/psgd. Really outdated, and some code pieces were written in 2015. I may update some of them in the near future.      
 ### Detailed notes on code files
 * preconditioned_stochastic_gradient_descent.py: provides routines for preconditioners and preconditioned gradients calculations.
 * hello_psgd.py: a 'hello world' demo for PSGD on Rosenbrock function minimization. 

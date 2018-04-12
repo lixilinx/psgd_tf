@@ -1,4 +1,5 @@
 ## Tensorflow implementation of PSGD
+*Coming updates: I am implementing a sparse LU decomposition preconditioner. It is a limited-memory preconditioner, performs well, and works with a list of tensor parameters having arbitrary shapes.*  
 ### An overview
 PSGD (preconditioned stochastic gradient descent) is a general second-order optimization method. An quick review of its theory is given in Section II.B http://arxiv.org/abs/1803.09383. This package provides tensorflow implementations of PSGD and some benchmark problems.
 

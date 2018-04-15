@@ -6,6 +6,7 @@
                          Check Section IV.B in http://arxiv.org/abs/1803.09383 for details
                          Feature normalization is related to a specific form of preconditioner
                          We further scaling the output features. So I call it SCAN preconditioner
+* Update in April, 2018: add sparse LU preconditioner; modified dense preconditioner code  
 
 Tensorflow functions for PSGD (Preconditioned SGD) 
 
@@ -29,11 +30,8 @@ def update_precond_dense(Q, dxs, dgs, step=0.01):
     max_diag = tf.reduce_max(tf.diag_part(Q))
     Q = Q + tf.diag(tf.clip_by_value(_diag_loading*max_diag - tf.diag_part(Q), 0.0, max_diag))
     
-    length = Q.shape[0]
-    dx = tf.concat([tf.reshape(x, [-1]) for x in dxs], 0) # a long row vector
-    dg = tf.concat([tf.reshape(g, [-1]) for g in dgs], 0) # a long row vector
-    dx = tf.reshape(dx, [length, 1])    # a tall column vector 
-    dg = tf.reshape(dg, [length, 1])    # a tall column vector
+    dx = tf.concat([tf.reshape(x, [-1, 1]) for x in dxs], 0) # a tall column vector
+    dg = tf.concat([tf.reshape(g, [-1, 1]) for g in dgs], 0) # a tall column vector
     
     # refer to the PSGD paper ...
     a = tf.matmul(Q, dg)
@@ -49,11 +47,9 @@ def precond_grad_dense(Q, grads):
     Q: Cholesky factor of preconditioner
     grads: a list of gradients to be preconditioned
     """
-    length = Q.shape[0]
-    grad = [tf.reshape(g, [-1]) for g in grads] # a list of row vector
-    lens = [g.shape.as_list()[0] for g in grad] # length of each row vector
-    grad = tf.concat(grad, 0)  # a long row vector
-    grad = tf.reshape(grad, [length, 1])    # a tall column vector
+    grad = [tf.reshape(g, [-1, 1]) for g in grads] # a list of column vector
+    lens = [g.shape.as_list()[0] for g in grad] # length of each column vector
+    grad = tf.concat(grad, 0)  # a tall column vector
     
     pre_grad = tf.matmul(Q, tf.matmul(Q, grad), transpose_a=True)
     
@@ -191,8 +187,139 @@ def precond_grad_scan(ql, qr, Grad):
 
 
 
+###############################################################################                        
+def update_precond_splu(L12, l3, U12, u3, dxs, dgs, step=0.01):
+    """
+    update sparse LU preconditioner P = Q^T*Q, where 
+    Q = L*U,
+    L12 = [L1; L2]
+    U12 = [U1, U2]
+    L = [L1, 0; L2, diag(l3)]
+    U = [U1, U2; 0, diag(u3)]
+    l3 and u3 are column vectors
+
+    dxs: a list of random perturbation on parameters
+    dgs: a list of resultant perturbation on gradients
+    step: step size
+    """
+    # make sure that L and U have similar dynamic range
+    max_l = tf.maximum(tf.reduce_max(tf.abs(L12)), tf.reduce_max(l3))
+    max_u = tf.maximum(tf.reduce_max(tf.abs(U12)), tf.reduce_max(u3))
+    rho = tf.sqrt(max_l/max_u)
+    L12 = L12/rho
+    l3 = l3/rho
+    U12 = rho*U12
+    u3 = rho*u3
+    # extract blocks
+    r = U12.shape.as_list()[0]
+    L1 = L12[:r]
+    L2 = L12[r:]
+    U1 = U12[:, :r]
+    U2 = U12[:, r:]
+    
+    dx = tf.concat([tf.reshape(x, [-1, 1]) for x in dxs], 0) # a tall column vector
+    dg = tf.concat([tf.reshape(g, [-1, 1]) for g in dgs], 0) # a tall column vector
+    
+    # U*dg
+    Ug1 = tf.matmul(U1, dg[:r]) + tf.matmul(U2, dg[r:])
+    Ug2 = u3*dg[r:]
+    # Q*dg
+    Qg1 = tf.matmul(L1, Ug1)
+    Qg2 = tf.matmul(L2, Ug1) + l3*Ug2
+    # inv(U^T)*dx
+    iUtx1 = tf.matrix_triangular_solve(tf.transpose(U1), dx[:r], lower=True)
+    iUtx2 = (dx[r:] - tf.matmul(tf.transpose(U2), iUtx1))/u3
+    # inv(Q^T)*dx
+    iQtx2 = iUtx2/l3
+    iQtx1 = tf.matrix_triangular_solve(tf.transpose(L1), 
+                                       iUtx1 - tf.matmul(tf.transpose(L2), iQtx2), lower=False)
+    # L^T*Q*dg
+    LtQg1 = tf.matmul(tf.transpose(L1), Qg1) + tf.matmul(tf.transpose(L2), Qg2)
+    LtQg2 = l3*Qg2
+    # P*dg
+    Pg1 = tf.matmul(tf.transpose(U1), LtQg1)
+    Pg2 = tf.matmul(tf.transpose(U2), LtQg1) + u3*LtQg2
+    # inv(L)*inv(Q^T)*dx
+    iLiQtx1 = tf.matrix_triangular_solve(L1, iQtx1, lower=True)
+    iLiQtx2 = (iQtx2 - tf.matmul(L2, iLiQtx1))/l3
+    # inv(P)*dx
+    iPx2 = iLiQtx2/u3
+    iPx1 = tf.matrix_triangular_solve(U1, iLiQtx1 - tf.matmul(U2, iPx2), lower=False)
+    
+    # update L
+    grad1 = tf.matmul(Qg1, tf.transpose(Qg1)) - tf.matmul(iQtx1, tf.transpose(iQtx1))
+    grad1 = tf.matrix_band_part(grad1, -1, 0)
+    grad2 = tf.matmul(Qg2, tf.transpose(Qg1)) - tf.matmul(iQtx2, tf.transpose(iQtx1))
+    grad3 = Qg2*Qg2 - iQtx2*iQtx2
+    max_abs_grad = tf.reduce_max(tf.abs(grad1))
+    max_abs_grad = tf.maximum(max_abs_grad, tf.reduce_max(tf.abs(grad2)))
+    max_abs_grad = tf.maximum(max_abs_grad, tf.reduce_max(tf.abs(grad3)))
+    step0 = step/(max_abs_grad + _tiny)
+    newL1 = L1 - tf.matmul(step0*grad1, L1)
+    newL2 = L2 - tf.matmul(step0*grad2, L1) - step0*grad3*L2
+    newl3 = l3 - step0*grad3*l3
+
+    # update U
+    grad1 = tf.matmul(Pg1, tf.transpose(dg[:r])) - tf.matmul(dx[:r], tf.transpose(iPx1))
+    grad1 = tf.matrix_band_part(grad1, 0, -1)
+    grad2 = tf.matmul(Pg1, tf.transpose(dg[r:])) - tf.matmul(dx[:r], tf.transpose(iPx2))
+    grad3 = Pg2*dg[r:] - dx[r:]*iPx2
+    max_abs_grad = tf.reduce_max(tf.abs(grad1))
+    max_abs_grad = tf.maximum(max_abs_grad, tf.reduce_max(tf.abs(grad2)))
+    max_abs_grad = tf.maximum(max_abs_grad, tf.reduce_max(tf.abs(grad3)))
+    step0 = step/(max_abs_grad + _tiny)
+    newU1 = U1 - tf.matmul(U1, step0*grad1)
+    newU2 = U2 - tf.matmul(U1, step0*grad2) - step0*tf.transpose(grad3)*U2
+    newu3 = u3 - step0*grad3*u3
+
+    return tf.concat([newL1, newL2], axis=0), newl3, tf.concat([newU1, newU2], axis=1), newu3
 
 
+def precond_grad_splu(L12, l3, U12, u3, grads):
+    """
+    return preconditioned gradient with sparse LU preconditioner
+    where P = Q^T*Q, 
+    Q = L*U,
+    L12 = [L1; L2]
+    U12 = [U1, U2]
+    L = [L1, 0; L2, diag(l3)]
+    U = [U1, U2; 0, diag(u3)]
+    l3 and u3 are column vectors
+    grads: a list of gradients to be preconditioned
+    """
+    grad = [tf.reshape(g, [-1, 1]) for g in grads] # a list of column vector
+    lens = [g.shape.as_list()[0] for g in grad] # length of each column vector
+    grad = tf.concat(grad, 0)  # a tall column vector
+    
+    r = U12.shape.as_list()[0]
+    L1 = L12[:r]
+    L2 = L12[r:]
+    U1 = U12[:, :r]
+    U2 = U12[:, r:]    
+    
+    # U*g
+    Ug1 = tf.matmul(U1, grad[:r]) + tf.matmul(U2, grad[r:])
+    Ug2 = u3*grad[r:]
+    # Q*g
+    Qg1 = tf.matmul(L1, Ug1)
+    Qg2 = tf.matmul(L2, Ug1) + l3*Ug2
+    # L^T*Q*g
+    LtQg1 = tf.matmul(tf.transpose(L1), Qg1) + tf.matmul(tf.transpose(L2), Qg2)
+    LtQg2 = l3*Qg2
+    # P*g
+    pre_grad = tf.concat([tf.matmul(tf.transpose(U1), LtQg1),
+                          tf.matmul(tf.transpose(U2), LtQg1) + u3*LtQg2], axis=0)
+    
+    pre_grads = [] # restore pre_grad to its original shapes
+    idx = 0
+    for i in range(len(grads)):
+        pre_grads.append(tf.reshape(pre_grad[idx : idx + lens[i]], tf.shape(grads[i])))
+        idx = idx + lens[i]
+    
+    return pre_grads
+
+  
+  
 """
 Kronecker product preconditioner are particularly useful in deep learning since many operations there have form,
     (feature_out) = nonlinearity[ (matrix_to_be_optimized) * (feature_in) ]. 

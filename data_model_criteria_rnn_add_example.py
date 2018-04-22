@@ -1,12 +1,12 @@
-""" rnn, add problem """
+""" rnn, add problem; batch size is 1 """
 import numpy as np
 import tensorflow as tf
 
 np.random.seed(0)
 
 # Parameter Settings
-batch_size0, seq_len0 = [128, 50]
-dim_in, dim_hidden, dim_out = [2, 30, 1]
+batch_size0, seq_len0 = [1, 30]
+dim_in, dim_hidden, dim_out = [2, 20, 1]
 dtype = tf.float32
 
 # generate training data for the add problem

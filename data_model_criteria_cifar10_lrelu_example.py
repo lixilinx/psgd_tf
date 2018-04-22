@@ -41,18 +41,22 @@ test_labels = labels # no need to generate one-hot labels
 ###############################################################################
 
 # Parameter Settings
-batch_size = 128
-num_f = 32  # number of features 
+batch_size = 100
+num_f = 96  # number of features 
 
 dtype = tf.float32
 
+train_generator = tf.contrib.keras.preprocessing.image.ImageDataGenerator(rotation_range = 10.0,
+                                                                          width_shift_range = 0.1,
+                                                                          height_shift_range = 0.1,
+                                                                          shear_range = 0.1,
+                                                                          zoom_range = 0.1,
+                                                                          horizontal_flip=True,
+                                                                          data_format='channels_last')
+train_generator = train_generator.flow(train_images, train_labels, batch_size=batch_size)
+
 def get_batches():
-    rp = np.random.permutation(train_images.shape[0])
-    x = train_images[rp[0:batch_size]]
-    y = train_labels[rp[0:batch_size]]
-    for i in range(batch_size):
-        if np.random.rand() < 0.5:
-            x[i] = x[i,:,::-1]  # the only data augumentation is flipping left to right
+    x, y = train_generator.next()
     return x, y
 
 
@@ -64,15 +68,16 @@ W1 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(3*3*3+1), size=[3*3
 W2 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(3*3*num_f+1), size=[3*3*num_f+1, num_f]), dtype=dtype)
 W3 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(3*3*num_f+1), size=[3*3*num_f+1, num_f]), dtype=dtype)
 W4 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(3*3*num_f+1), size=[3*3*num_f+1, num_f]), dtype=dtype)
-W5 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(5*5*num_f+1), size=[5*5*num_f+1, 10]), dtype=dtype)
-Ws = [W1, W2, W3, W4, W5]
+W5 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(3*3*num_f+1), size=[3*3*num_f+1, num_f]), dtype=dtype)
+W6 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(3*3*num_f+1), size=[3*3*num_f+1, num_f]), dtype=dtype)
+W7 = tf.Variable(np.random.normal(loc=0.0, scale=1.0/np.sqrt(3*3*num_f+1), size=[num_f+1, 10]), dtype=dtype)
+Ws = [W1, W2, W3, W4, W5, W6, W7]
 
-# this model is NOT 2nd differentiable everywhere! 
-def model(Ws, inputs):
-    def lrelu(x):   # leakage relu
+def model(Ws, inputs):   
+    def lrelu(x):
         return tf.maximum(x, 0.3*x)
     
-    W1, W2, W3, W4, W5 = Ws
+    W1, W2, W3, W4, W5, W6, W7 = Ws
     w1 = tf.reshape(W1[:-1], [3, 3, 3, num_f])
     b1 = W1[-1]
     x1 = lrelu( tf.nn.conv2d(inputs, w1, [1,1,1,1], 'VALID') + b1 )
@@ -92,20 +97,28 @@ def model(Ws, inputs):
     x4 = lrelu( tf.nn.conv2d(x3, w4, [1,1,1,1], 'VALID') + b4 )
     
     x4 = tf.nn.max_pool(x4, [1,2,2,1], [1,2,2,1], 'VALID')
+    
+    w5 = tf.reshape(W5[:-1], [3, 3, num_f, num_f])
+    b5 = W5[-1]
+    x5 = lrelu( tf.nn.conv2d(x4, w5, [1,1,1,1], 'VALID') + b5 )
         
     batch_size = inputs.shape.as_list()[0]
-    x4_flat = tf.reshape(x4, [batch_size, -1])
+    x5_flat = tf.reshape(x5, [batch_size, -1])
     ones = tf.ones([batch_size, 1], dtype=dtype)
-    y = tf.matmul(tf.concat([x4_flat, ones], 1), W5)
+    x6 = lrelu(tf.matmul(tf.concat([x5_flat, ones], 1), W6))
+    y = tf.matmul(tf.concat([x6, ones], 1), W7)
     return y
 
-# cross entropy loss with a weights-energy regularization term 
+# cross entropy loss
 def train_criterion(Ws):
     y = model(Ws, train_inputs)
-    w2_loss = 20.0*tf.reduce_mean([tf.reduce_mean(w*w) for w in Ws])
-    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=train_outputs, logits=y)) + w2_loss
+    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=train_outputs, logits=y))
 
 # classification error rate
 def test_criterion(Ws):
-    y = model(Ws, tf.constant(test_images, dtype=dtype))
-    return 1.0 - tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y, axis=1), tf.constant(test_labels, dtype=tf.int64)), dtype=dtype))
+    num_correct = 0.0
+    for i in range(10):
+        y = model(Ws, tf.constant(test_images[1000*i:1000*(i+1)], dtype=dtype))
+        num_correct += tf.reduce_sum(tf.cast(tf.equal(tf.argmax(y, axis=1),
+                                                      tf.constant(test_labels[1000*i:1000*(i+1)], dtype=tf.int64)), dtype=dtype))
+    return 1.0 - num_correct/10000.0

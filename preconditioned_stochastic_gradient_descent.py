@@ -7,6 +7,7 @@
                          Feature normalization is related to a specific form of preconditioner
                          We further scaling the output features. So I call it SCAN preconditioner
 * Update in April, 2018: add sparse LU preconditioner; modified dense preconditioner code  
+                         remove diagonal loading
 
 Tensorflow functions for PSGD (Preconditioned SGD) 
 
@@ -15,7 +16,7 @@ Tensorflow functions for PSGD (Preconditioned SGD)
 import tensorflow as tf
 
 _tiny = 1.2e-38         # to avoid dividing by zero
-_diag_loading = 1e-9    # to avoid numerical difficulty when solving triangular linear system
+#_diag_loading = 1e-9    # to avoid numerical difficulty when solving triangular linear system
                         # maybe unnecessary, and can be set to 0
 
 ###############################################################################
@@ -27,8 +28,8 @@ def update_precond_dense(Q, dxs, dgs, step=0.01):
     dgs: a list of resultant perturbation on gradients
     step: step size
     """
-    max_diag = tf.reduce_max(tf.diag_part(Q))
-    Q = Q + tf.diag(tf.clip_by_value(_diag_loading*max_diag - tf.diag_part(Q), 0.0, max_diag))
+    #max_diag = tf.reduce_max(tf.diag_part(Q))
+    #Q = Q + tf.diag(tf.clip_by_value(_diag_loading*max_diag - tf.diag_part(Q), 0.0, max_diag))
     
     dx = tf.concat([tf.reshape(x, [-1, 1]) for x in dxs], 0) # a tall column vector
     dg = tf.concat([tf.reshape(g, [-1, 1]) for g in dgs], 0) # a tall column vector
@@ -76,8 +77,8 @@ def update_precond_kron(Ql, Qr, dX, dG, step=0.01):
     # diagonal loading maybe unnecessary 
     max_diag_l = tf.reduce_max(tf.diag_part(Ql))
     max_diag_r = tf.reduce_max(tf.diag_part(Qr))
-    Ql = Ql + tf.diag(tf.clip_by_value(_diag_loading*max_diag_l - tf.diag_part(Ql), 0.0, max_diag_l))
-    Qr = Qr + tf.diag(tf.clip_by_value(_diag_loading*max_diag_r - tf.diag_part(Qr), 0.0, max_diag_r))
+    #Ql = Ql + tf.diag(tf.clip_by_value(_diag_loading*max_diag_l - tf.diag_part(Ql), 0.0, max_diag_l))
+    #Qr = Qr + tf.diag(tf.clip_by_value(_diag_loading*max_diag_r - tf.diag_part(Qr), 0.0, max_diag_r))
     
     # make sure that Ql and Qr have similar dynamic range
     rho = tf.sqrt(max_diag_l/max_diag_r)
@@ -339,8 +340,8 @@ def update_precond_type1(d, U, dx, dg, step=0.01):
     """
     r = U.shape.as_list()[1]
 
-    max_d = tf.reduce_max(d)
-    d = d + tf.clip_by_value(_diag_loading*max_d - d, 0.0, max_d)
+    #max_d = tf.reduce_max(d)
+    #d = d + tf.clip_by_value(_diag_loading*max_d - d, 0.0, max_d)
 
     inv_d = tf.reciprocal(d)
     invD_U = tf.multiply(tf.tile(inv_d, [1, r]), U)
@@ -373,9 +374,9 @@ def update_precond_type2(Q1, Q2, q3, dx, dg, step=0.01):
     """
     r = Q1.shape.as_list()[0]
     
-    max_diag = tf.maximum(tf.reduce_max(tf.diag_part(Q1)), tf.reduce_max(q3))
-    Q1 = Q1 + tf.diag(tf.clip_by_value(_diag_loading*max_diag - tf.diag_part(Q1), 0.0, max_diag))
-    q3 = q3 + tf.clip_by_value(_diag_loading*max_diag - q3, 0.0, max_diag)
+    #max_diag = tf.maximum(tf.reduce_max(tf.diag_part(Q1)), tf.reduce_max(q3))
+    #Q1 = Q1 + tf.diag(tf.clip_by_value(_diag_loading*max_diag - tf.diag_part(Q1), 0.0, max_diag))
+    #q3 = q3 + tf.clip_by_value(_diag_loading*max_diag - q3, 0.0, max_diag)
     
     a1 = tf.matmul(Q1, dg[:r]) + tf.matmul(Q2, dg[r:])
     a2 = tf.multiply(q3, dg[r:])

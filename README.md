@@ -1,48 +1,43 @@
 ## Tensorflow implementation of PSGD  
 ### An overview
-PSGD (preconditioned stochastic gradient descent) is a general second-order optimization method. PSGD differentiates itself from most existing methods by its inherent abilities of handling nonconvexity and gradient noises. An quick review of its theory is given in Section II.B http://arxiv.org/abs/1803.09383.  This package provides tensorflow implementations of PSGD and some typical machine learning benchmark problems.
+PSGD (preconditioned stochastic gradient descent) is a general purpose second-order optimization method. PSGD differentiates itself from most existing methods by its inherent abilities of handling nonconvexity and gradient noises. Please refer to the [original paper](https://arxiv.org/abs/1512.04202) for its design ideas. 
 
-The code works with Tensorflow 1.6 and Python 3.6. Try 'hello_psgd.py' first to see whether it works in your configurations. Run 'Demo_....py' to try different methods. Change its 'data_model_criteria_...' line to load different benchmark problems. You may need to download cifar10 data for two benchmark problems. Proposed (step_size, grad_norm_clip_thr) settings and typical convergence curves for all methods and problems are in parameter_settings.txt and convergence_curves.pdf, respectively. 
-### Implementations of PSGD 
-#### Forms of preconditioner
-*Dense preconditioner (dense)*: a preconditioner with no sparsity. Needless to say, dimension of the gradients to be preconditioned cannot be large.
+[The old implementation for tf1.x](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) is archived. This updated implementation works for tf2.x, and also greatly simplifies the usage of Kronecker product preconditioner. Please try 'hello_psgd.py' first to see whether it works in your configurations.
+### Implemented preconditioners 
+#### General purpose preconditioners
+*Dense preconditioner*: this preconditioner is related to the classic Newton method. 
 
-*Diagonal preconditioner (diag)*: a simple preconditioner with closed-form solution, equivalent to the equilibration preconditioner in equilibrated SGD (ESGD).
+*Sparse LU decomposition*: this one resembles the limited-memory BFGS method. 
 
-*Sparse LU preconditioner (splu)*: we let *Q*=*LU*, where *L* and *U* are sparse lower and upper triangular matrices with positive diagonals, respectively. Except for the diagonals, only the first a few columns of *L* and the first a few rows of *U* have nonzero entries. 
+*Diagonal preconditioner*: this reduces to the [equilibration preconditioner](https://arxiv.org/abs/1502.04390). Its implementation is trivial.  
+#### Kronecker product preconditioners
+For matrix parameters, we can have a left and a right preconditioner on its gradient. [This paper](https://openreview.net/forum?id=Bye5SiAqKX) discusses the design of such preconditioners in detail. Either preconditioner can be a dense (resembles feature whitening), or a normalization (similar to batch normalization), or a scaling preconditioner. The code can switch to the right implementations by checking the dimensions of preconditioners. 
 
-*Kronecker product preconditioner (kron)*: a sparse preconditioner for gradient of matrix parameter.
+For example, a preconditioner with dimension [*N*, *N*] is dense; [2, *N*] is for normalization; and [1, *N*] for scaling. But, there is one ambiguity when *N*=2 (a [2, 2] preconditioner is a dense or normalization type?). Here, we always assume a squared preconditioner is dense.    
 
-*SCaling-And-Normalization preconditioner (scan)*: a super sparse Kronecker product preconditioner (sparser than diagonal preconditioner). To use it, make sure that the matrix parameter is from affine transformation with form (output feature vector) = (input feature vector augmented by padding 1 at the end) * (matrix parameter to be optimized).    
+### Implemented examples
+*hello_psgd.py*: eager execution example of PSGD on Rosenbrock function minimization.
 
-*Customized preconditioner*: One simple way to define new preconditioners is to combine existing ones via direct sum, e.g., dense preconditioner for this group of parameters, and Kronecker product preconditioners for another list of matrix parameters.
-#### Hessian-vector product calculation
-*Approximate way*: the simple numerical differentiation. Numerical errors just look like gradient noises to PSGD. 
+*mnist_with_lenet5.py*: demonstration of PSGD on convolutional neural network training with the classic LeNet5 for MNIST digits recognition. PSGD is likely to achieve test classification error rate less than 0.7%, considerably lower than most first order methods.  
 
-*Exact way*: it requires second-order derivative. Be aware that certain tensorflow modules, e.g., tf.while_loop, do not support it yet (checked on tf version 1.6).
-#### Which implementation is preferred?
-*Preconditioner*: The Kronecker product preconditioner achieves a good trade off between performance and complexity. To use it, we need to represent the parameters to be optimized as a list of matrices (including column and row vectors), and use basic vector and matrix operations to build our models. One desirable side effect of such vectorized code is faster executions by leveraging existing highly optimized linear algebra packages. 
+*lstm_with_xor_problem.py*: demonstration of PSGD on gated recurrent neural network training with the delayed XOR problem in the original [LSTM paper](https://www.researchgate.net/publication/13853244_Long_Short-term_Memory). Note that neither LSTM nor the vanilla RNN can solve this straightforward problem with first order method. PSGD is likely to solve it with either the LSTM or the simplest vanilla RNN (check the [archived code](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) for more details).
 
-*Hessian-vector product*: The exact way is numerically safer, and thus preferred. The approximate way is empirically proved to be a valid alternative. If only the approximate way is feasible but does not perform well in single precision, try it with double precision. 
-### Misc.
-*Vanishing Hessian*: Vanishing Hessian leads to excessively large preconditioner. Preconditioned gradient clipping helps to stabilize the learning. The plot below shows results of the mnist_tanh_example, where clipping plays an important role.
+*demo_usage_of_all_preconditioners.py*: demonstrate the usage of all implemented preconditioners on the tensor decomposition problem. Note that all kinds of Kronecker product preconditioners share the same way of usage. You just need to pay attention to its initializations. Typically (up to a positive scaling difference), identity matrix for a dense preconditioner; [[1,1,...,1],[0,0,...,0]] for normalization preconditioner; and [1,1,...,1] for scaling preconditioner.  
 
-![alt text](https://github.com/lixilinx/psgd_tf/blob/master/mnist_tanh.png)
+### Miscellaneous topics
 
-*Non-differentiable functions*: Non-differentiable functions lead to vanishing/undefined/ill-conditioned Hessian. PSGD does not use the Hessian directly, and generally works with such functions. The plot below shows results of the cifar10_lrelu_example, which uses leaky ReLU and max pooling. 
+*No higher order derivative for Hessian-vector product calculation?*: some modules like Baidu's CTC implementation do not support higher order derivatives, and thus no way to calculate the Hessian-vector product. However, you can use numerical method to calculate it as examples in [archived code](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) and the [original paper](https://arxiv.org/abs/1512.04202). Most likely, there is no big difference between the usages of exact and approximated Hessian-vector products.  
 
-![alt text](https://github.com/lixilinx/psgd_tf/blob/master/cifar10_lrelu.png)
+*Which preconditioner to use?*: Dense preconditioner for small problems (<10 K parameters); (dense, dense) Kronecker product preconditioners for most CNN and RNN problems where the matrix size is about [1000, 1000]; (dense, normalization) or (normalization, dense) Kronecker product preconditioners from problems involving matrix with sizes up to [1000, 1000 K] or [1000 K, 1000], e.g., the language modeling example in [this paper](https://openreview.net/forum?id=Bye5SiAqKX); eventually the (scaling, normalization) or (normalization, scaling) Kronecker product preconditioners is sufficiently sparse for matrix with sizes up to [1000 K, 1000 K] (possible to be so large?).
 
-*Batch size 1*: Second-order methods do not imply large batch sizes. PSGD has its built-in gradient noise damping ability. The plot below shows results of the rnn_add_example, which uses batch size 1.
+*NaN?* PSGD might have diverged. Try reducing the initial guess for preconditioner, or reducing the learning rate, or clipping the preconditioned gradient. When all these remedies do not work, it is likely that the Hessian-vectors produce NaN first. Second-order derivatives under- or over-flows more easily than gradient, especially with single or half precision calculations. 
 
-![alt text](https://github.com/lixilinx/psgd_tf/blob/master/rnn_add.png)
+*Use of non-differentiable functions/modules*: theoretically, non-differentiable functions/modules lead to vanishing/undefined/ill-conditioned Hessian. PSGD does not use the Hessian directly. Instead, it just tries to align the distance measures between the parameter and gradient spaces (resembles the Bregman divergence), and typically works well with such irregularities. For example, considering the LeNet5 model, both ReLU and max-pooling only have sub-gradient, but PSGD works extremely well.  
 
-*Updating preconditioner less frequently*: This is a simple trick to reduce the complexity of PSGD. Curvatures typically evolve slower than gradients. So we can update the preconditioner less frequently by skipping the execution of preconditioner update graph in certain iterations.
+*Reducing time complexity per step?*: A simple trick is to update the preconditioner less frequently. Curvatures typically evolve slower than gradients. So we have no need to update the preconditioner at every iteration.
 
-*File preconditioned_stochastic_gradient_descent.py*: defines all the preconditioners and preconditioned gradients, expect for the diagonal ones, which are given in Demo_ESGD.py.
+*Smaller spatial complexity?*: PSGD needs more memory to calculate the Hessian-vector product. Still, you can use numerical method to approximate the Hessian-vector product, and thus only the gradient calculation graph is required. This reduces the memory consumption. 
 
-*File Demo_....py*: demonstrate the usage of different preconditioners. 
+*Parameter step for preconditioner update*: 0.01 works well for most stochastic optimization. Yet, it can be significantly larger for mathematical optimization as there is no gradient noise.
 
-*File Demo_..._approxHv.py*: demonstrate the usage of different preconditioners with approximated Hessian-vector product.
-
-*File data_model_criteria_....py*: define the benchmark problems. We have RNN, CNN, LSTM examples with regression and classification tasks.
+*Parameter _tiny for preconditioner update*: used solely to avoid division by zero. Just use the smallest positive normal number, e.g., about 1.2e-38 for tf.float32. 

@@ -1,33 +1,31 @@
-""" A hello-world example of PSGD on Rosenbrock function minimization (https://en.wikipedia.org/wiki/Rosenbrock_function)
+""" An eager execution hello-world example of PSGD on Rosenbrock function minimization
 """
-import tensorflow as tf
 import matplotlib.pyplot as plt
-
+import tensorflow as tf
 import preconditioned_stochastic_gradient_descent as psgd 
 
-with tf.Session() as sess:
-    x1 = tf.Variable(-1.0)
-    x2 = tf.Variable(1.0)
-    Q = tf.Variable(0.1*tf.eye(2), trainable=False) # P=Q^T*Q is the preconditioner
-    f = 100.0*(x2 - x1**2)**2 + (1.0 - x1)**2 # the function to be minimized
-    
-    xs = [x1, x2] # put all x in xs
-    grads = tf.gradients(f, xs) # gradients
-    precond_grads = psgd.precond_grad_dense(Q, grads) # preconditioned gradients
-    new_xs = [x - 0.5*g for (x, g) in zip(xs, precond_grads)] # new x; no need to use line search!
-    update_xs = [tf.assign(old, new) for (old, new) in zip(xs, new_xs)] # update x 
-    
-    delta_xs = [tf.random_normal(x.shape) for x in xs] # a random vector
-    grad_deltaw = tf.reduce_sum([tf.reduce_sum(g*v) for (g, v) in zip(grads, delta_xs)]) # gradient-vector product
-    hess_deltaw = tf.gradients(grad_deltaw, xs) # Hessian-vector product   
-    new_Q = psgd.update_precond_dense(Q, delta_xs, hess_deltaw, 0.2) # new Q
-    update_Q = tf.assign(Q, new_Q) # update Q
-            
-    # begin to excute the graph
-    sess.run(tf.global_variables_initializer())
-    f_value = list()
-    for _ in range(500):    
-        _value, _,_ = sess.run([f, update_xs, update_Q])
-        f_value.append(_value)
+xs = [tf.Variable(-1.0), tf.Variable(1.0)]
+Q = 0.1*tf.eye(2)  # P=Q^T*Q is the preconditioner
 
-plt.semilogy(f_value)
+def f(xs): # Rosenbrock function
+    x1, x2 = xs
+    return 100.0*(x2 - x1**2)**2 + (1.0 - x1)**2 # the function to be minimized
+
+f_values = []
+for _ in range(500): 
+    with tf.GradientTape() as g2nd: # for 2nd derivatives
+        with tf.GradientTape() as g1st: # for 1st derivatives
+            y = f(xs)
+        grads = g1st.gradient(y, xs) # 1st derivatives
+        vs = [tf.random.normal(x.shape) for x in xs] # a random vector
+        grads_vs = sum([g*v for (g, v) in zip(grads, vs)]) # sum(gradient-vector inner product)
+    hess_vs = g2nd.gradient(grads_vs, xs) # Hessian-vector products
+    f_values.append(y.numpy())
+    
+    Q = psgd.update_precond_dense(Q, vs, hess_vs, step=0.2) # update preconditioner
+    precond_grads = psgd.precond_grad_dense(Q, grads) # get preconditioned gradient
+    [x.assign_sub(0.5*g) for (x, g) in zip(xs, precond_grads)] # update variables
+
+plt.semilogy(f_values)
+plt.xlabel('Iterations')
+plt.ylabel('Function values')

@@ -47,8 +47,7 @@ def train_step(xy_pair, lr):
             loss = train_loss(xy_pair)
         grads = g1st.gradient(loss, lenet5_vars)
         vs = [tf.random.normal(W.shape) for W in lenet5_vars] # a random vector
-        grad_vs = sum([tf.reduce_sum(g*v) for (g, v) in zip(grads, vs)])
-    hess_vs = g2nd.gradient(grad_vs, lenet5_vars) # Hessian-vector products
+    hess_vs = g2nd.gradient(grads, lenet5_vars, vs) # Hessian-vector products
     new_Qs = [psgd.update_precond_kron(Qlr[0], Qlr[1], v, Hv) for (Qlr, v, Hv) in zip(Qs, vs, hess_vs)]
     [[Qlr[0].assign(new_Qlr[0]), Qlr[1].assign(new_Qlr[1])] for (Qlr, new_Qlr) in zip(Qs, new_Qs)]  
     pre_grads = [psgd.precond_grad_kron(Qlr[0], Qlr[1], g) for (Qlr, g) in zip(Qs, grads)]

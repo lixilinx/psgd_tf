@@ -34,8 +34,7 @@ if demo_case == 'general_dense_preconditioner':
                 cost = f()
             grads = g1st.gradient(cost, xyz) # gradient
             vs = [tf.random.normal(w.shape) for w in xyz] # a random vector
-            grad_vs = sum([tf.reduce_sum(g*v) for (g, v) in zip(grads, vs)]) # sum of gradient-vector inner product
-        hess_vs = g2nd.gradient(grad_vs, xyz) # Hessian-vector products
+        hess_vs = g2nd.gradient(grads, xyz, vs) # Hessian-vector products
         Q.assign(psgd.update_precond_dense(Q, vs, hess_vs, step=0.1)) # update Q
         pre_grads = psgd.precond_grad_dense(Q, grads) # this is the preconditioned gradient
         [w.assign_sub(0.1*g) for (w, g) in zip(xyz, pre_grads)] # update parameters
@@ -58,8 +57,7 @@ elif demo_case == 'general_sparse_LU_decomposition_preconditioner':
                 cost = f()
             grads = g1st.gradient(cost, xyz) # gradient
             vs = [tf.random.normal(w.shape) for w in xyz] # a random vector
-            grad_vs = sum([tf.reduce_sum(g*v) for (g, v) in zip(grads, vs)]) # sum of gradient-vector inner product
-        hess_vs = g2nd.gradient(grad_vs, xyz) # Hessian-vector products
+        hess_vs = g2nd.gradient(grads, xyz, vs) # Hessian-vector products
         [old.assign(new) for (old, new) in zip([L12, l3, U12, u3], psgd.update_precond_splu(L12, l3, U12, u3, vs, hess_vs, step=0.1))]
         pre_grads = psgd.precond_grad_splu(L12, l3, U12, u3, grads)
         [w.assign_sub(0.1*g) for (w, g) in zip(xyz, pre_grads)] # update parameters
@@ -88,8 +86,7 @@ elif demo_case == 'Kronecker_product_preconditioner':
                 cost = f()
             grads = g1st.gradient(cost, xyz) # gradient
             vs = [tf.random.normal(w.shape) for w in xyz] # a random vector
-            grad_vs = sum([tf.reduce_sum(g*v) for (g, v) in zip(grads, vs)]) # sum of gradient-vector inner product
-        hess_vs = g2nd.gradient(grad_vs, xyz) # Hessian-vector products
+        hess_vs = g2nd.gradient(grads, xyz, vs) # Hessian-vector products
         new_Qs = [psgd.update_precond_kron(Qlr[0], Qlr[1], v, Hv, step=0.1) for (Qlr, v, Hv) in zip(Qs, vs, hess_vs)]
         [[Qlr[0].assign(new_Qlr[0]), Qlr[1].assign(new_Qlr[1])] for (Qlr, new_Qlr) in zip(Qs, new_Qs)]          
         pre_grads = [psgd.precond_grad_kron(Qlr[0], Qlr[1], g) for (Qlr, g) in zip(Qs, grads)]

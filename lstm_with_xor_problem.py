@@ -1,12 +1,12 @@
-"""LSTM network with the hard classic delayed XOR problem
+"""LSTM network with the classic delayed XOR problem. Common but hard to learn the XOR relation between two events with lag
 """
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import preconditioned_stochastic_gradient_descent as psgd 
 
-batch_size, seq_len = 128, 100
-dim_in, dim_hidden, dim_out = 2, 30, 1
+batch_size, seq_len = 128, 100 # decreasing sequence_length
+dim_in, dim_hidden, dim_out = 2, 30, 1 # or increasing dimension_hidden_layer will make learning easier
 
 def generate_train_data( ):
     x = np.zeros([batch_size, seq_len, dim_in], dtype=np.float32)
@@ -52,8 +52,7 @@ def train_step(xy_pair):
             loss = train_loss(xy_pair)
         grads = g1st.gradient(loss, lstm_vars)
         vs = [tf.random.normal(W.shape) for W in lstm_vars] # a random vector
-        grad_vs = sum([tf.reduce_sum(g*v) for (g, v) in zip(grads, vs)])
-    hess_vs = g2nd.gradient(grad_vs, lstm_vars) # Hessian-vector products
+    hess_vs = g2nd.gradient(grads, lstm_vars, vs) # Hessian-vector products
     new_Qs = [psgd.update_precond_kron(Qlr[0], Qlr[1], v, Hv) for (Qlr, v, Hv) in zip(Qs, vs, hess_vs)]
     [[Qlr[0].assign(new_Qlr[0]), Qlr[1].assign(new_Qlr[1])] for (Qlr, new_Qlr) in zip(Qs, new_Qs)]  
     pre_grads = [psgd.precond_grad_kron(Qlr[0], Qlr[1], g) for (Qlr, g) in zip(Qs, grads)]

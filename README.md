@@ -2,7 +2,7 @@
 ### An overview
 PSGD (preconditioned stochastic gradient descent) is a general purpose second-order optimization method. PSGD differentiates itself from most existing methods by its inherent abilities of handling nonconvexity and gradient noises. Please refer to the [original paper](https://arxiv.org/abs/1512.04202) for its designing ideas. 
 
-[The old implementation for tf1.x](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) is archived. This updated implementation works for tf2.x, and also greatly simplifies the usage of Kronecker product preconditioner. Please try 'hello_psgd.py' first to see whether it works in your configurations.
+[The old implementation for tf1.x](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) is archived. This updated implementation works for tf2.x, and also greatly simplifies the usage of Kronecker product preconditioner. Please try 'hello_psgd.py' first to see whether it works in your configurations. You may also refer to the [Pytorch implementation](https://github.com/lixilinx/psgd_torch).
 ### Implemented preconditioners 
 #### General purpose preconditioners
 *Dense preconditioner*: this preconditioner is related to the classic Newton method. 
@@ -11,14 +11,14 @@ PSGD (preconditioned stochastic gradient descent) is a general purpose second-or
 
 *Diagonal preconditioner*: this reduces to the [equilibration preconditioner](https://arxiv.org/abs/1502.04390). The closed-form solution is available, and its implementation is trivial.  
 #### Kronecker product preconditioners
-For matrix parameters, we can have a left and a right preconditioner on its gradient. [This paper](https://openreview.net/forum?id=Bye5SiAqKX) discusses the design of such preconditioners in detail. Either the left or the right preconditioner can be a dense (resembles feature whitening), or a normalization (similar to batch normalization), or a scaling preconditioner. The code can switch to the right implementations by checking the dimensions of each preconditioner. 
+For matrix parameters, we can have a left and a right preconditioner on its gradient. [This paper](https://openreview.net/forum?id=Bye5SiAqKX) discusses the design of such preconditioners in detail. Either the left or the right preconditioner can be a dense (resembles feature whitening), or a normalization (similar to batch normalization), or a scaling preconditioner. The code can switch to the right implementations by checking the dimensions of each preconditioner. Input signature with default dtype=float32 is used to avoid unnecessary retracing.  
 
 For example, a left or right preconditioner with dimension [*N*, *N*] is dense; [2, *N*] is for normalization; and [1, *N*] for scaling. But, there is ambiguity when *N*=2 (a [2, 2] preconditioner can be either a dense or normalization type). Here, we always assume that a squared preconditioner is dense.    
 
 ### Implemented demos with classic problems
 *hello_psgd.py*: eager execution example of PSGD on Rosenbrock function minimization.
 
-*mnist_with_lenet5.py*: demonstration of PSGD on convolutional neural network training with the classic LeNet5 for MNIST digits recognition. With multiple runs, PSGD is likely to achieve test classification error rate below 0.7%, which is considerably lower than those first order optimization methods.  
+*mnist_with_lenet5.py*: demonstration of PSGD on convolutional neural network training with the classic LeNet5 for MNIST digits recognition. With multiple runs, PSGD is likely to achieve test classification error rate below 0.7%, which is considerably lower than other optimization methods like SGD, momentum, Adam, KFAC, etc.  
 
 *lstm_with_xor_problem.py*: demonstration of PSGD on gated recurrent neural network training with the delayed XOR problem proposed in the original [LSTM paper](https://www.researchgate.net/publication/13853244_Long_Short-term_Memory). Note that neither LSTM nor the vanilla RNN can solve this 'simple' problem with first order optimization method. PSGD is likely to solve it with either the LSTM or the simplest vanilla RNN (check the [archived code](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) for more details). It successes in most of the runs with the given parameter settings. 
 
@@ -28,7 +28,7 @@ For example, a left or right preconditioner with dimension [*N*, *N*] is dense; 
 
 *No support of higher order derivative for Hessian-vector product calculation*: some modules like Baidu's CTC implementation do not support higher order derivatives, and thus there is no way to calculate the Hessian-vector product exactly. However, you can use numerical method to approximate it as examples in the [archived code](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) and the [original paper](https://arxiv.org/abs/1512.04202). Most likely, there is no big performance difference between the use of exact and approximated Hessian-vector products.  
 
-*Which preconditioner to use?*: Dense preconditioner for small scaled problems (< 1e4 parameters); (dense, dense) Kronecker product preconditioners for most middle scaled problems, where the matrix size is about [1e3, 1e3]; (dense, normalization) or (normalization, dense) Kronecker product preconditioners from large scaled problems involving matrices with sizes up to [1e3, 1e6] or [1e6, 1e3], e.g., the language modeling example in [this paper](https://openreview.net/forum?id=Bye5SiAqKX); eventually, the (scaling, normalization) or (normalization, scaling) Kronecker product preconditioners is sufficiently sparse for matrices with sizes up to [1e6, 1e6] (really too large to be of any real use).
+*Which preconditioner to use?*: Dense preconditioner for small scaled problems (< 1e4 parameters); (dense, dense) Kronecker product preconditioners for middle scaled problems, where the matrix size is about [1e3, 1e3]; (dense, normalization) or (normalization, dense) Kronecker product preconditioners for large scaled problems involving matrices with sizes up to [1e3, 1e6] or [1e6, 1e3], e.g., the language modeling example in [this paper](https://openreview.net/forum?id=Bye5SiAqKX); eventually, the (scaling, normalization) or (normalization, scaling) Kronecker product preconditioners is sufficiently sparse for matrices with sizes up to [1e6, 1e6] (really too large to be of any real use).
 
 *NaN?* PSGD might have diverged. Try reducing the initial guess for preconditioner, or reducing the learning rate, or clipping the preconditioned gradient. When neither of these remedies works, check whether Hessian-vector products produce NaN first. Second-order derivatives under- or over-flow more easily than we thought, especially with single or half precision arithmetic. 
 
@@ -39,5 +39,3 @@ For example, a left or right preconditioner with dimension [*N*, *N*] is dense; 
 *Reducing the spatial complexity*: PSGD needs more memory than SGD to calculate the Hessian-vector product. Still, you can use the numerical method to approximate the Hessian-vector products by only using the graph for gradient calculation. This reduces the memory consumption a lot. 
 
 *Parameter 'step' for preconditioner update*: 0.01 works well for most stochastic optimization. Yet, it can be significantly larger for mathematical optimization as there is no gradient noise.
-
-*Parameter '_tiny' for preconditioner update*: used solely to avoid division by zero. Just use the smallest positive normal number, e.g., about 1.2e-38 for tf.float32. 

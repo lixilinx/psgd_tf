@@ -110,9 +110,9 @@ def update_precond_kron(Ql, Qr, dX, dG, step=tf.constant(0.01, dtype=dtype)):
         return Ql, Qr#raise Exception('Unknown Kronecker product preconditioner')
  
  
-@tf.function(input_signature=(tf.TensorSpec(shape=[None,None], dtype=tf.float32),
-                              tf.TensorSpec(shape=[None,None], dtype=tf.float32),
-                              tf.TensorSpec(shape=[None,None], dtype=tf.float32),))      
+@tf.function(input_signature=(tf.TensorSpec(shape=[None,None], dtype=dtype),
+                              tf.TensorSpec(shape=[None,None], dtype=dtype),
+                              tf.TensorSpec(shape=[None,None], dtype=dtype),))      
 def precond_grad_kron(Ql, Qr, Grad):
     """
     return preconditioned gradient using Kronecker product preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql)

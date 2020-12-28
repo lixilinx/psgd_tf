@@ -57,7 +57,7 @@ def train_step(xy_pair, lr):
     return loss
 
 batch_size = 64
-lr = 0.1 # will aneal this learning rate to 0.001   
+lr = tf.constant(0.1) # will aneal this learning rate to 0.001   
 Qs = [[tf.Variable(tf.eye(W.shape[0]), trainable=False), 
        tf.Variable(tf.eye(W.shape[1]), trainable=False)] for W in lenet5_vars]
 grad_norm_clip_thr = 0.1*tf.cast(sum([tf.size(W) for W in lenet5_vars]), tf.float32)**0.5 # gradient clipping is optional

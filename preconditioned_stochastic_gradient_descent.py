@@ -16,17 +16,20 @@ Tensorflow functions for PSGD (Preconditioned SGD)
 @author: XILIN LI, lixilinx@gmail.com
 """
 import tensorflow as tf
+
+dtype = tf.float32
+# _tiny is the minimum normal positive number of dtype to avoid division by zero
+_tiny = (lambda x=tf.constant(1, dtype=dtype), f=lambda x, f: f(x/2, f) if x/2>0 else x: f(x, f))( )
    
 
 ###############################################################################
-def update_precond_dense(Q, dxs, dgs, step=0.01, _tiny=1.2e-38):
+def update_precond_dense(Q, dxs, dgs, step=tf.constant(0.01, dtype=dtype)):
     """
     update dense preconditioner P = Q^T*Q
     Q: Cholesky factor of preconditioner
     dxs: a list of random perturbation on parameters
     dgs: a list of resultant perturbation on gradients
     step: update step size
-    _tiny: an offset to avoid division by zero 
     """    
     dx = tf.concat([tf.reshape(x, [-1, 1]) for x in dxs], 0) # a tall column vector
     dg = tf.concat([tf.reshape(g, [-1, 1]) for g in dgs], 0) # a tall column vector
@@ -61,89 +64,103 @@ def precond_grad_dense(Q, grads):
 
 
 ###############################################################################
-def update_precond_kron(Ql, Qr, dX, dG, step=0.01, _tiny=1.2e-38):
+@tf.function(input_signature=(tf.TensorSpec(shape=[None,None], dtype=dtype),
+                              tf.TensorSpec(shape=[None,None], dtype=dtype),
+                              tf.TensorSpec(shape=[None,None], dtype=dtype),
+                              tf.TensorSpec(shape=[None,None], dtype=dtype),
+                              tf.TensorSpec(shape=[ ],         dtype=dtype),))
+def update_precond_kron(Ql, Qr, dX, dG, step=tf.constant(0.01, dtype=dtype)):
     """
     Update Kronecker product preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql)
     Either Ql or Qr can be sparse, and the code can choose the right update rule.
     dX: perturbation of (matrix) parameter
     dG: perturbation of (matrix) gradient
     step: update step size
-    _tiny: an offset to avoid division by zero 
     """
-    m, n = Ql.shape
-    p, q = Qr.shape
+    m, n = tf.shape(Ql)[0], tf.shape(Ql)[1] # dynamic tf.shape(tensor) vs static tensor.shape
+    p, q = tf.shape(Qr)[0], tf.shape(Qr)[1]
     if m==n: # left is dense
         if p==q: #(dense, dense) format
-            return update_precond_dense_dense(Ql, Qr, dX, dG, step, _tiny)
+            return _update_precond_dense_dense(Ql, Qr, dX, dG, step)
         elif p==2: # (dense, normalization) format
-            return update_precond_norm_dense(Qr, Ql, tf.transpose(dX), tf.transpose(dG), step, _tiny)[::-1]
+            return _update_precond_norm_dense(Qr, Ql, tf.transpose(dX), tf.transpose(dG), step)[::-1]
         elif p==1: # (dense, scaling) format
-            return update_precond_dense_scale(Ql, Qr, dX, dG, step, _tiny)
+            return _update_precond_dense_scale(Ql, Qr, dX, dG, step)
         else:
-            raise Exception('Unknown Kronecker product preconditioner')
+            tf.print('Unknown Kronecker product preconditioner, no update')
+            return Ql, Qr#raise Exception('Unknown Kronecker product preconditioner')
     elif m==2: # left is normalization
         if p==q: # (normalization, dense) format
-            return update_precond_norm_dense(Ql, Qr, dX, dG, step, _tiny)
+            return _update_precond_norm_dense(Ql, Qr, dX, dG, step)
         elif p==1: # (normalization, scaling) format
-            return update_precond_norm_scale(Ql, Qr, dX, dG, step, _tiny)
+            return _update_precond_norm_scale(Ql, Qr, dX, dG, step)
         else:
-            raise Exception('Unknown Kronecker product preconditioner')
+            tf.print('Unknown Kronecker product preconditioner, no update')
+            return Ql, Qr#raise Exception('Unknown Kronecker product preconditioner')
     elif m==1: # left is scaling
         if p==q: # (scaling, dense) format
-            return update_precond_dense_scale(Qr, Ql, tf.transpose(dX), tf.transpose(dG), step, _tiny)[::-1]
+            return _update_precond_dense_scale(Qr, Ql, tf.transpose(dX), tf.transpose(dG), step)[::-1]
         elif p==2: # (scaling, normalization) format
-            return update_precond_norm_scale(Qr, Ql, tf.transpose(dX), tf.transpose(dG), step, _tiny)[::-1]
+            return _update_precond_norm_scale(Qr, Ql, tf.transpose(dX), tf.transpose(dG), step)[::-1]
         else:
-            raise Exception('Unknown Kronecker product preconditioner')
+            tf.print('Unknown Kronecker product preconditioner, no update')
+            return Ql, Qr#raise Exception('Unknown Kronecker product preconditioner')
     else:
-        raise Exception('Unknown Kronecker product preconditioner')
+        tf.print('Unknown Kronecker product preconditioner, no update')
+        return Ql, Qr#raise Exception('Unknown Kronecker product preconditioner')
  
-       
+ 
+@tf.function(input_signature=(tf.TensorSpec(shape=[None,None], dtype=tf.float32),
+                              tf.TensorSpec(shape=[None,None], dtype=tf.float32),
+                              tf.TensorSpec(shape=[None,None], dtype=tf.float32),))      
 def precond_grad_kron(Ql, Qr, Grad):
     """
     return preconditioned gradient using Kronecker product preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql)
     Either Ql or Qr can be sparse, and the code can choose the right way to precondition the gradient
     Grad: (matrix) gradient
     """
-    m, n = Ql.shape
-    p, q = Qr.shape
+    m, n = tf.shape(Ql)[0], tf.shape(Ql)[1] # use the dynamic shape here
+    p, q = tf.shape(Qr)[0], tf.shape(Qr)[1]
     if m==n: # left is dense
         if p==q: #(dense, dense) format
-            return precond_grad_dense_dense(Ql, Qr, Grad)
+            return _precond_grad_dense_dense(Ql, Qr, Grad)
         elif p==2: # (dense, normalization) format
-            return tf.transpose(precond_grad_norm_dense(Qr, Ql, tf.transpose(Grad)))
+            return tf.transpose(_precond_grad_norm_dense(Qr, Ql, tf.transpose(Grad)))
         elif p==1: # (dense, scaling) format
-            return precond_grad_dense_scale(Ql, Qr, Grad)
+            return _precond_grad_dense_scale(Ql, Qr, Grad)
         else:
-            raise Exception('Unknown Kronecker product preconditioner')
+            tf.print('Unknown Kronecker product preconditioner, no preconditioning')
+            return Grad#raise Exception('Unknown Kronecker product preconditioner')
     elif m==2: # left is normalization
         if p==q: # (normalization, dense) format
-            return precond_grad_norm_dense(Ql, Qr, Grad)
+            return _precond_grad_norm_dense(Ql, Qr, Grad)
         elif p==1: # (normalization, scaling) format
-            return precond_grad_norm_scale(Ql, Qr, Grad)
+            return _precond_grad_norm_scale(Ql, Qr, Grad)
         else:
-            raise Exception('Unknown Kronecker product preconditioner')
+            tf.print('Unknown Kronecker product preconditioner, no preconditioning')
+            return Grad#raise Exception('Unknown Kronecker product preconditioner')
     elif m==1: # left is scaling
         if p==q: # (scaling, dense) format
-            return tf.transpose(precond_grad_dense_scale(Qr, Ql, tf.transpose(Grad)))
+            return tf.transpose(_precond_grad_dense_scale(Qr, Ql, tf.transpose(Grad)))
         elif p==2: # (scaling, normalization) format
-            return tf.transpose(precond_grad_norm_scale(Qr, Ql, tf.transpose(Grad)))
+            return tf.transpose(_precond_grad_norm_scale(Qr, Ql, tf.transpose(Grad)))
         else:
-            raise Exception('Unknown Kronecker product preconditioner')
+            tf.print('Unknown Kronecker product preconditioner, no preconditioning')
+            return Grad#raise Exception('Unknown Kronecker product preconditioner')
     else:
-        raise Exception('Unknown Kronecker product preconditioner')
+        tf.print('Unknown Kronecker product preconditioner, no preconditioning')
+        return Grad#raise Exception('Unknown Kronecker product preconditioner')
 
 
 ###############################################################################
-def update_precond_dense_dense(Ql, Qr, dX, dG, step=0.01, _tiny=1.2e-38):
+def _update_precond_dense_dense(Ql, Qr, dX, dG, step=tf.constant(0.01, dtype=dtype)):
     """
     update Kronecker product preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql)
     Ql: (left side) Cholesky factor of preconditioner
     Qr: (right side) Cholesky factor of preconditioner
     dX: perturbation of (matrix) parameter
     dG: perturbation of (matrix) gradient
-    step: update step size
-    _tiny: an offset to avoid division by zero    
+    step: update step size   
     """
     # make sure that Ql and Qr have similar dynamic range (optional)
     max_l = tf.reduce_max(tf.linalg.diag_part(Ql))
@@ -162,14 +179,14 @@ def update_precond_dense_dense(Ql, Qr, dX, dG, step=0.01, _tiny=1.2e-38):
     return Ql - tf.matmul(step1*grad1, Ql), Qr - tf.matmul(step2*grad2, Qr)
     
 
-def precond_grad_dense_dense(Ql, Qr, Grad):
+def _precond_grad_dense_dense(Ql, Qr, Grad):
     """
     return preconditioned gradient using Kronecker product preconditioner
     Ql: (left side) Cholesky factor of preconditioner
     Qr: (right side) Cholesky factor of preconditioner
     Grad: (matrix) gradient
     """
-    if Grad.shape[0] < Grad.shape[1]:
+    if tf.shape(Grad)[0] < tf.shape(Grad)[1]:
         return tf.matmul(tf.matmul(tf.matmul(tf.matmul(Ql, Ql, transpose_a=True), Grad), Qr, transpose_b=True), Qr)
     else:
         return tf.matmul(Ql, tf.matmul(Ql, tf.matmul(Grad, tf.matmul(Qr, Qr, transpose_a=True))), transpose_a=True)
@@ -178,7 +195,7 @@ def precond_grad_dense_dense(Ql, Qr, Grad):
 ###############################################################################
 # (normalization, dense) Kronecker product preconditioner 
 # the left one is a normalization preconditioner; the right one is a dense preconditioner
-def update_precond_norm_dense(ql, Qr, dX, dG, step=0.01, _tiny=1.2e-38):
+def _update_precond_norm_dense(ql, Qr, dX, dG, step=tf.constant(0.01, dtype=dtype)):
     """
     update (normalization, dense) preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql), where
     dX and dG have shape (M, N)
@@ -189,7 +206,6 @@ def update_precond_norm_dense(ql, Qr, dX, dG, step=0.01, _tiny=1.2e-38):
     dX is perturbation of (matrix) parameter
     dG is perturbation of (matrix) gradient
     step: update step size
-    _tiny: an offset to avoid division by zero 
     """
     # make sure that Ql and Qr have similar dynamic range (optional)
     max_l = tf.reduce_max(ql[0])
@@ -230,7 +246,7 @@ def update_precond_norm_dense(ql, Qr, dX, dG, step=0.01, _tiny=1.2e-38):
     return tf.stack((new_ql0, new_ql1)), Qr - tf.matmul(step2*grad2, Qr)
 
 
-def precond_grad_norm_dense(ql, Qr, Grad):
+def _precond_grad_norm_dense(ql, Qr, Grad):
     """
     return preconditioned gradient using (normalization, dense) Kronecker product preconditioner 
     Suppose Grad has shape (M, N)
@@ -241,7 +257,7 @@ def precond_grad_norm_dense(ql, Qr, Grad):
     """
     preG = tf.transpose(ql[0:1])*Grad
     preG = preG + tf.matmul(ql[1:], Grad[-1:], transpose_a=True) # Ql*Grad 
-    if preG.shape[0] < preG.shape[1]:
+    if tf.shape(preG)[0] < tf.shape(preG)[1]:
         preG = tf.matmul(tf.matmul(preG, Qr, transpose_b=True), Qr) # Ql*Grad*Qr^T*Qr
     else:
         preG = tf.matmul(preG, tf.matmul(Qr, Qr, transpose_a=True)) # Ql*Grad*Qr^T*Qr
@@ -257,7 +273,7 @@ def precond_grad_norm_dense(ql, Qr, Grad):
 ###############################################################################
 # (dense, scaling) Kronecker product preconditioner
 # the left side is a dense preconditioner; the right side is a scaling preconditioner
-def update_precond_dense_scale(Ql, qr, dX, dG, step=0.01, _tiny=1.2e-38):
+def _update_precond_dense_scale(Ql, qr, dX, dG, step=tf.constant(0.01, dtype=dtype)):
     """
     update (dense, scaling) preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql), where
     dX and dG have shape (M, N)
@@ -267,7 +283,6 @@ def update_precond_dense_scale(Ql, qr, dX, dG, step=0.01, _tiny=1.2e-38):
     dX is perturbation of (matrix) parameter
     dG is perturbation of (matrix) gradient
     step: update step size
-    _tiny: an offset to avoid division by zero 
     """
     # make sure that Ql and Qr have similar dynamic range (optional)
     max_l = tf.reduce_max(tf.linalg.diag_part(Ql))
@@ -292,7 +307,7 @@ def update_precond_dense_scale(Ql, qr, dX, dG, step=0.01, _tiny=1.2e-38):
     return Ql - tf.matmul(step1*grad1, Ql), qr - step2*grad2*qr
 
 
-def precond_grad_dense_scale(Ql, qr, Grad):
+def _precond_grad_dense_scale(Ql, qr, Grad):
     """
     return preconditioned gradient using (dense, scaling) Kronecker product preconditioner
     Suppose Grad has shape (M, N)
@@ -300,7 +315,7 @@ def precond_grad_dense_scale(Ql, qr, Grad):
     qr: shape (1, N), defines a diagonal matrix for output feature scaling
     Grad: (matrix) gradient
     """
-    if Grad.shape[0] < Grad.shape[1]:
+    if tf.shape(Grad)[0] < tf.shape(Grad)[1]:
         preG = tf.matmul(tf.matmul(Ql, Ql, transpose_a=True), Grad) # Ql^T*Ql*Grad
     else:
         preG = tf.matmul(Ql, tf.matmul(Ql, Grad), transpose_a=True) # Ql^T*Ql*Grad
@@ -310,7 +325,7 @@ def precond_grad_dense_scale(Ql, qr, Grad):
 ###############################################################################
 # (normalization, scaling) Kronecker product preconditioner 
 # the left one is a normalization preconditioner; the right one is a scaling preconditioner
-def update_precond_norm_scale(ql, qr, dX, dG, step=0.01, _tiny=1.2e-38):
+def _update_precond_norm_scale(ql, qr, dX, dG, step=tf.constant(0.01, dtype=dtype)):
     """
     update (normalization, scaling) preconditioner P = kron_prod(Qr^T*Qr, Ql^T*Ql), where
     dX and dG have shape (M, N)
@@ -322,7 +337,6 @@ def update_precond_norm_scale(ql, qr, dX, dG, step=0.01, _tiny=1.2e-38):
     dX is perturbation of (matrix) parameter
     dG is perturbation of (matrix) gradient
     step: update step size
-    _tiny: an offset to avoid division by zero 
     """
     # make sure that Ql and Qr have similar dynamic range (optional)
     max_l = tf.reduce_max(ql[0])
@@ -355,7 +369,7 @@ def update_precond_norm_scale(ql, qr, dX, dG, step=0.01, _tiny=1.2e-38):
     return tf.stack((new_ql0, new_ql1)), qr - step2*grad2*qr
 
 
-def precond_grad_norm_scale(ql, qr, Grad):
+def _precond_grad_norm_scale(ql, qr, Grad):
     """
     return preconditioned gradient using (normalization, scaling) Kronecker product preconditioner
     Suppose Grad has shape (M, N)
@@ -379,7 +393,7 @@ def precond_grad_norm_scale(ql, qr, Grad):
 
 
 ###############################################################################                        
-def update_precond_splu(L12, l3, U12, u3, dxs, dgs, step=0.01, _tiny=1.2e-38):
+def update_precond_splu(L12, l3, U12, u3, dxs, dgs, step=tf.constant(0.01, dtype=dtype)):
     """
     update sparse LU preconditioner P = Q^T*Q, where 
     Q = L*U,
@@ -392,7 +406,6 @@ def update_precond_splu(L12, l3, U12, u3, dxs, dgs, step=0.01, _tiny=1.2e-38):
     dxs: a list of random perturbation on parameters
     dgs: a list of resultant perturbation on gradients
     step: update step size
-    _tiny: an offset to avoid division by zero 
     """
     # make sure that L and U have similar dynamic range (optional)
     max_l = tf.maximum(tf.reduce_max(tf.linalg.diag_part(L12)), tf.reduce_max(l3))

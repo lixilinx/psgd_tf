@@ -522,3 +522,153 @@ def precond_grad_splu(L12, l3, U12, u3, grads):
         idx = idx + lens[i]
     
     return pre_grads
+
+  
+##############################################################################
+# The UVd preconditioner is defined by
+#
+#   Q = (I + U*V')*diag(d)
+#
+# which, after reparameterization, is equivalent to form
+#
+#   diag(d) + U*V'
+# 
+# It relates to the LM-BFGS and conjugate gradient methods. 
+# 
+
+def IpUVtmatvec(U, V, x):
+    """
+    Returns (I + U*V')*x. All variables are either matrices or column vectors. 
+    """
+    return x + tf.matmul(U, tf.matmul(V, x, transpose_a=True))
+
+def IpUVtsolve(U, V, x):
+    """
+    Returns inv(I + U*V')*x. All variables are either matrices or column vectors.
+    """
+    VtU = tf.matmul(V, U, transpose_a=True)
+    return x - tf.matmul(U, tf.linalg.solve(tf.eye(tf.size(VtU[0])) + VtU,
+                                            tf.matmul(V, x, transpose_a=True)))
+
+def UVt_norm2_est_pow(U, V, num_iter=2):
+    """
+    Estimate the norm of matrix U*V' with power method.
+    U and V are two tall matrices. 
+    """
+    x = tf.matmul(V, tf.random.normal(tf.shape(V[:1])), transpose_b=True)
+    for _ in range(num_iter):
+        x = x/tf.sqrt(tf.reduce_sum(x*x))
+        x = tf.matmul(U, tf.matmul(V, x, transpose_a=True))
+        x = tf.matmul(V, tf.matmul(U, x, transpose_a=True))
+    return tf.pow(tf.reduce_sum(x*x), 0.25)
+
+def update_precond_UVd_math(U, V, d, v, h, step=tf.constant(0.01), norm2_est='fro'):
+    """
+    Update preconditioner Q = (I + U*V')*diag(d) with (vector, Hessian-vector product) = (v, h).
+                               
+    U, V, d, v, and h are either matrices or column vectors.  
+    """
+    # balance the numerical dynamic ranges of U and V
+    if tf.random.uniform([]) < 0.01:
+        maxU = tf.reduce_max(tf.abs(U))
+        maxV = tf.reduce_max(tf.abs(V))
+        rho = tf.sqrt(maxU/maxV)
+        U = U/rho
+        V = rho*V
+
+    Qh = IpUVtmatvec(U, V, d*h)
+    invQtv = IpUVtsolve(V, U, v/d)
+    Ph = d*IpUVtmatvec(V, U, Qh)
+    invPv = IpUVtsolve(U, V, invQtv)/d
+
+    nablaD = Ph*h - v*invPv
+    mu = step/(tf.reduce_max(tf.abs(nablaD)) + _tiny)
+    d = d - mu*d*nablaD
+
+    # update either U or V, not both at the same time 
+    if tf.random.uniform([]) < 0.5:
+        nablaU = tf.matmul(Qh, tf.matmul(Qh, V, transpose_a=True))
+        nablaU = nablaU - tf.matmul(invQtv, tf.matmul(invQtv, V, transpose_a=True))
+        if norm2_est == 'pow':
+            mu = step/(UVt_norm2_est_pow(nablaU, V) + _tiny) 
+        else: # default is 'fro' bound; too conservative, so I increase step to step^0.5
+            mu = tf.sqrt(step)/(tf.sqrt(tf.reduce_sum(nablaU*nablaU) * tf.reduce_sum(V*V)) + _tiny)
+        U = U - mu*nablaU - mu*tf.matmul(nablaU, tf.matmul(V, U, transpose_a=True))
+    else:
+        nablaV = tf.matmul(Qh, tf.matmul(Qh, U, transpose_a=True))
+        nablaV = nablaV - tf.matmul(invQtv, tf.matmul(invQtv, U, transpose_a=True))
+        if norm2_est == 'pow':
+            mu = step/(UVt_norm2_est_pow(U, nablaV) + _tiny)
+        else: # default is 'fro' method; increase step to step^0.5
+            mu = tf.sqrt(step)/(tf.sqrt(tf.reduce_sum(nablaV*nablaV) * tf.reduce_sum(U*U)) + _tiny)
+        V = V - mu*nablaV - mu*tf.matmul(V, tf.matmul(U, nablaV, transpose_a=True))
+
+    return [U, V, d]
+
+def precond_grad_UVd_math(U, V, d, g):
+    """
+    Preconditioning gradient g with Q = (I + U*V')*diag(d).
+                                         
+    All variables here are either matrices or column vectors. 
+    """
+    g = IpUVtmatvec(U, V, d*g)
+    g = d*IpUVtmatvec(V, U, g)
+    return g
+
+
+def update_precond_UVd(UVd, vs, hs, step=tf.constant(0.01), norm2_est='fro'):
+    """
+    update UVd preconditioner Q = (I + U*V')*diag(d) with
+    vs: a list of vectors;
+    hs: a list of associated Hessian-vector products;
+    step: updating step size in range (0, 1);
+    norm2_est: spectral norm estimation method, either 'fro' or 'pow'. 
+    The 'fro' option uses Frobenius norm, too conservative, but safe;
+    the 'pow' option uses power iteration estimation, generally more accurate,
+    but could be unsafe when seriously under-estimate the spectral norm.
+
+    It is a wrapped version of function update_precond_UVd_math for easy use. 
+    Also, U, V, and d are transposed (row-major order as Python convention), and 
+    packaged into one tensor. 
+    """
+    assert norm2_est in ['fro', 'pow'] # do not expect its change in graph mode 
+    UVd = tf.transpose(UVd)
+    U, V = tf.split(UVd[:,:-1], 2, axis=1)
+    d = UVd[:,-1:]
+
+    v = tf.concat([tf.reshape(v, [-1]) for v in vs], 0)
+    h = tf.concat([tf.reshape(h, [-1]) for h in hs], 0)
+    U, V, d = update_precond_UVd_math(U, V, d, v[:,None], h[:,None], step=step, norm2_est=norm2_est)
+    UVd = tf.concat([U, V, d], 1)
+    return tf.transpose(UVd)
+
+def precond_grad_UVd(UVd, grads):
+    """
+    return preconditioned gradient with UVd preconditioner Q = (I + U*V')*diag(d),
+    and a list of gradients, grads.
+
+    It is a wrapped version of function precond_grad_UVd_math for easy use.
+    Also, U, V, and d are transposed (row-major order as Python convention), and 
+    packaged into one tensor.
+    """
+    UVd = tf.transpose(UVd)
+    U, V = tf.split(UVd[:,:-1], 2, axis=1)
+    d = UVd[:,-1:]
+
+    # record the sizes and shapes, and then flatten gradients
+    sizes = [tf.size(g) for g in grads]
+    shapes = [tf.shape(g) for g in grads]
+    i, cumsizes = 0, [] # cannot use cumsizes = tf.math.cumsum(sizes) in graph mode here
+    for size in sizes:
+        i += size
+        cumsizes.append(i)
+    
+    grad = tf.concat([tf.reshape(g, [-1]) for g in grads], 0)
+
+    # precondition gradients
+    pre_grad = precond_grad_UVd_math(U, V, d, grad[:,None])
+
+    # restore gradients to their original shapes
+    return [tf.reshape(pre_grad[j-i:j], s) for (i, j, s) in zip(sizes, cumsizes, shapes)]
+
+################## end of UVd preconditioner #################################

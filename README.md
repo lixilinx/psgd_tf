@@ -1,4 +1,11 @@
 ## Tensorflow implementation of PSGD  
+
+### New general purpose preconditioners 
+
+Kronecker-product preconditioner is powerful, but inconvenient to use as we need to sort out the parameters to be optimized in certain ways such that their corresponding preconditioners do meaningful operations. [This pdf file](https://drive.google.com/file/d/1CTNx1q67_py87jn-0OI-vSLcsM1K7VsM/view?usp=sharing) documents the math of a few promising new general purpose preconditioners.
+
+* Preconditioner UVd:  Q = U*V'+diag(d). It is tricky to update this one on Lie groups, but it performs well and solves the delayed XOR problem reliably. 
+
 ### An overview
 PSGD (preconditioned stochastic gradient descent) is a general purpose second-order optimization method. PSGD differentiates itself from most existing methods by its inherent abilities of handling nonconvexity and gradient noises. Please refer to the [original paper](https://arxiv.org/abs/1512.04202) for its designing ideas. 
 

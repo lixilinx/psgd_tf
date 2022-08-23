@@ -525,6 +525,7 @@ def precond_grad_splu(L12, l3, U12, u3, grads):
 
   
 ##############################################################################
+#
 # The UVd preconditioner is defined by
 #
 #   Q = (I + U*V')*diag(d)
@@ -542,27 +543,15 @@ def IpUVtmatvec(U, V, x):
     """
     return x + tf.matmul(U, tf.matmul(V, x, transpose_a=True))
 
-def IpUVtsolve(U, V, x):
-    """
-    Returns inv(I + U*V')*x. All variables are either matrices or column vectors.
-    """
-    VtU = tf.matmul(V, U, transpose_a=True)
-    return x - tf.matmul(U, tf.linalg.solve(tf.eye(tf.size(VtU[0])) + VtU,
-                                            tf.matmul(V, x, transpose_a=True)))
+# def IpUVtsolve(U, V, x):
+#     """
+#     Returns inv(I + U*V')*x. All variables are either matrices or column vectors.
+#     """
+#     VtU = tf.matmul(V, U, transpose_a=True)
+#     return x - tf.matmul(U, tf.linalg.solve(tf.eye(tf.size(VtU[0])) + VtU,
+#                                             tf.matmul(V, x, transpose_a=True)))
 
-def UVt_norm2_est_pow(U, V, num_iter=2):
-    """
-    Estimate the norm of matrix U*V' with power method.
-    U and V are two tall matrices. 
-    """
-    x = tf.matmul(V, tf.random.normal(tf.shape(V[:1])), transpose_b=True)
-    for _ in range(num_iter):
-        x = x/tf.sqrt(tf.reduce_sum(x*x))
-        x = tf.matmul(U, tf.matmul(V, x, transpose_a=True))
-        x = tf.matmul(V, tf.matmul(U, x, transpose_a=True))
-    return tf.pow(tf.reduce_sum(x*x), 0.25)
-
-def update_precond_UVd_math(U, V, d, v, h, step=tf.constant(0.01), norm2_est='fro'):
+def update_precond_UVd_math(U, V, d, v, h, step=tf.constant(0.01)):
     """
     Update preconditioner Q = (I + U*V')*diag(d) with (vector, Hessian-vector product) = (v, h).
                                
@@ -577,31 +566,45 @@ def update_precond_UVd_math(U, V, d, v, h, step=tf.constant(0.01), norm2_est='fr
         V = rho*V
 
     Qh = IpUVtmatvec(U, V, d*h)
-    invQtv = IpUVtsolve(V, U, v/d)
     Ph = d*IpUVtmatvec(V, U, Qh)
-    invPv = IpUVtsolve(U, V, invQtv)/d
+    
+    # invQtv = IpUVtsolve(V, U, v/d)
+    # invPv = IpUVtsolve(U, V, invQtv)/d
+    VtU = tf.matmul(V, U, transpose_a=True)
+    IpVtU = tf.eye(tf.size(VtU[0])) + VtU
+    invQtv = v/d
+    invQtv = invQtv - tf.matmul(V, tf.linalg.solve(IpVtU, tf.matmul(U, invQtv, transpose_a=True), adjoint=True))
+    invPv = invQtv - tf.matmul(U, tf.linalg.solve(IpVtU, tf.matmul(V, invQtv, transpose_a=True)))
+    invPv = invPv/d
 
     nablaD = Ph*h - v*invPv
     mu = step/(tf.reduce_max(tf.abs(nablaD)) + _tiny)
     d = d - mu*d*nablaD
 
     # update either U or V, not both at the same time 
-    if tf.random.uniform([]) < 0.5:
-        nablaU = tf.matmul(Qh, tf.matmul(Qh, V, transpose_a=True))
-        nablaU = nablaU - tf.matmul(invQtv, tf.matmul(invQtv, V, transpose_a=True))
-        if norm2_est == 'pow':
-            mu = step/(UVt_norm2_est_pow(nablaU, V) + _tiny) 
-        else: # default is 'fro' bound; too conservative, so I increase step to step^0.5
-            mu = tf.sqrt(step)/(tf.sqrt(tf.reduce_sum(nablaU*nablaU) * tf.reduce_sum(V*V)) + _tiny)
-        U = U - mu*nablaU - mu*tf.matmul(nablaU, tf.matmul(V, U, transpose_a=True))
+    a, b = Qh, invQtv
+    if tf.random.uniform([]) < 0.5:        
+        atV = tf.matmul(a, V, transpose_a=True)
+        atVVt = tf.matmul(atV, V, transpose_b=True)
+        btV = tf.matmul(b, V, transpose_a=True)
+        btVVt = tf.matmul(btV, V, transpose_b=True)
+        norm = tf.sqrt(tf.abs( tf.matmul(a,a,transpose_a=True) * tf.matmul(atVVt, atVVt, transpose_b=True)
+                              +tf.matmul(b,b,transpose_a=True) * tf.matmul(btVVt, btVVt, transpose_b=True)
+                            -2*tf.matmul(a,b,transpose_a=True) * tf.matmul(atVVt, btVVt, transpose_b=True) ))
+        mu = step/(norm + _tiny)
+        U = U - mu*( tf.matmul(a, tf.matmul(atV, IpVtU))
+                    -tf.matmul(b, tf.matmul(btV, IpVtU)) )
     else:
-        nablaV = tf.matmul(Qh, tf.matmul(Qh, U, transpose_a=True))
-        nablaV = nablaV - tf.matmul(invQtv, tf.matmul(invQtv, U, transpose_a=True))
-        if norm2_est == 'pow':
-            mu = step/(UVt_norm2_est_pow(U, nablaV) + _tiny)
-        else: # default is 'fro' method; increase step to step^0.5
-            mu = tf.sqrt(step)/(tf.sqrt(tf.reduce_sum(nablaV*nablaV) * tf.reduce_sum(U*U)) + _tiny)
-        V = V - mu*nablaV - mu*tf.matmul(V, tf.matmul(U, nablaV, transpose_a=True))
+        atU = tf.matmul(a, U, transpose_a=True)
+        btU = tf.matmul(b, U, transpose_a=True)
+        UUta = tf.matmul(U, atU, transpose_b=True)
+        UUtb = tf.matmul(U, btU, transpose_b=True)
+        norm = tf.sqrt(tf.abs( (tf.matmul(UUta, UUta, transpose_a=True)) * (tf.matmul(a, a, transpose_a=True))
+                              +(tf.matmul(UUtb, UUtb, transpose_a=True)) * (tf.matmul(b, b, transpose_a=True))
+                            -2*(tf.matmul(UUta, UUtb, transpose_a=True)) * (tf.matmul(a, b, transpose_a=True)) ))
+        mu = step/(norm + _tiny)
+        V = V - mu*( tf.matmul(a + tf.matmul(V, atU, transpose_b=True), atU)
+                    -tf.matmul(b + tf.matmul(V, btU, transpose_b=True), btU) )
 
     return [U, V, d]
 
@@ -616,29 +619,23 @@ def precond_grad_UVd_math(U, V, d, g):
     return g
 
 
-def update_precond_UVd(UVd, vs, hs, step=tf.constant(0.01), norm2_est='fro'):
+def update_precond_UVd(UVd, vs, hs, step=tf.constant(0.01)):
     """
     update UVd preconditioner Q = (I + U*V')*diag(d) with
     vs: a list of vectors;
     hs: a list of associated Hessian-vector products;
-    step: updating step size in range (0, 1);
-    norm2_est: spectral norm estimation method, either 'fro' or 'pow'. 
-    The 'fro' option uses Frobenius norm, too conservative, but safe;
-    the 'pow' option uses power iteration estimation, generally more accurate,
-    but could be unsafe when seriously under-estimate the spectral norm.
+    step: updating step size, setting to larger value, say 0.1, if updated sparsely. 
 
-    It is a wrapped version of function update_precond_UVd_math for easy use. 
     Also, U, V, and d are transposed (row-major order as Python convention), and 
     packaged into one tensor. 
     """
-    assert norm2_est in ['fro', 'pow'] # do not expect its change in graph mode 
     UVd = tf.transpose(UVd)
     U, V = tf.split(UVd[:,:-1], 2, axis=1)
     d = UVd[:,-1:]
 
     v = tf.concat([tf.reshape(v, [-1]) for v in vs], 0)
     h = tf.concat([tf.reshape(h, [-1]) for h in hs], 0)
-    U, V, d = update_precond_UVd_math(U, V, d, v[:,None], h[:,None], step=step, norm2_est=norm2_est)
+    U, V, d = update_precond_UVd_math(U, V, d, v[:,None], h[:,None], step=step)
     UVd = tf.concat([U, V, d], 1)
     return tf.transpose(UVd)
 
@@ -646,8 +643,8 @@ def precond_grad_UVd(UVd, grads):
     """
     return preconditioned gradient with UVd preconditioner Q = (I + U*V')*diag(d),
     and a list of gradients, grads.
-
     It is a wrapped version of function precond_grad_UVd_math for easy use.
+    
     Also, U, V, and d are transposed (row-major order as Python convention), and 
     packaged into one tensor.
     """

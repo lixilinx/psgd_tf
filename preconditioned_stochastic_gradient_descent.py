@@ -526,7 +526,7 @@ def precond_grad_splu(L12, l3, U12, u3, grads):
   
 ##############################################################################
 #
-# The UVd preconditioner is defined by
+# The low-rank modification (UVd) preconditioner is defined by
 #
 #   Q = (I + U*V')*diag(d)
 #
@@ -551,19 +551,20 @@ def IpUVtmatvec(U, V, x):
 #     return x - tf.matmul(U, tf.linalg.solve(tf.eye(tf.size(VtU[0])) + VtU,
 #                                             tf.matmul(V, x, transpose_a=True)))
 
-def update_precond_UVd_math(U, V, d, v, h, step=tf.constant(0.01)):
+def update_precond_UVd_math_(U, V, d, v, h, step, tiny):
     """
     Update preconditioner Q = (I + U*V')*diag(d) with (vector, Hessian-vector product) = (v, h).
+    State variables U, V and d are updated inplace.
                                
     U, V, d, v, and h are either matrices or column vectors.  
     """
-    # balance the numerical dynamic ranges of U and V
+    # balance the numerical dynamic ranges of U and V; optional
     if tf.random.uniform([]) < 0.01:
         maxU = tf.reduce_max(tf.abs(U))
         maxV = tf.reduce_max(tf.abs(V))
         rho = tf.sqrt(maxU/maxV)
-        U = U/rho
-        V = rho*V
+        U.assign(U/rho)
+        V.assign(rho*V)
 
     Qh = IpUVtmatvec(U, V, d*h)
     Ph = d*IpUVtmatvec(V, U, Qh)
@@ -571,15 +572,16 @@ def update_precond_UVd_math(U, V, d, v, h, step=tf.constant(0.01)):
     # invQtv = IpUVtsolve(V, U, v/d)
     # invPv = IpUVtsolve(U, V, invQtv)/d
     VtU = tf.matmul(V, U, transpose_a=True)
-    IpVtU = tf.eye(tf.size(VtU[0])) + VtU
+    IpVtU = tf.eye(tf.size(VtU[0]), dtype=VtU.dtype) + VtU
     invQtv = v/d
     invQtv = invQtv - tf.matmul(V, tf.linalg.solve(IpVtU, tf.matmul(U, invQtv, transpose_a=True), adjoint=True))
-    invPv = invQtv - tf.matmul(U, tf.linalg.solve(IpVtU, tf.matmul(V, invQtv, transpose_a=True)))
+    invPv  = invQtv - tf.matmul(U, tf.linalg.solve(IpVtU, tf.matmul(V, invQtv, transpose_a=True)))
     invPv = invPv/d
 
     nablaD = Ph*h - v*invPv
-    mu = step/(tf.reduce_max(tf.abs(nablaD)) + _tiny)
-    d = d - mu*d*nablaD
+    mu = step/(tf.reduce_max(tf.abs(nablaD)) + tiny)
+    # d = d - mu*d*nablaD
+    d.assign_sub(mu*d*nablaD)
 
     # update either U or V, not both at the same time 
     a, b = Qh, invQtv
@@ -588,25 +590,31 @@ def update_precond_UVd_math(U, V, d, v, h, step=tf.constant(0.01)):
         atVVt = tf.matmul(atV, V, transpose_b=True)
         btV = tf.matmul(b, V, transpose_a=True)
         btVVt = tf.matmul(btV, V, transpose_b=True)
+        # taking abs before sqrt to avoid sqrt(-0.0...)
         norm = tf.sqrt(tf.abs( tf.matmul(a,a,transpose_a=True) * tf.matmul(atVVt, atVVt, transpose_b=True)
                               +tf.matmul(b,b,transpose_a=True) * tf.matmul(btVVt, btVVt, transpose_b=True)
                             -2*tf.matmul(a,b,transpose_a=True) * tf.matmul(atVVt, btVVt, transpose_b=True) ))
-        mu = step/(norm + _tiny)
-        U = U - mu*( tf.matmul(a, tf.matmul(atV, IpVtU))
-                    -tf.matmul(b, tf.matmul(btV, IpVtU)) )
+        mu = step/(norm + tiny)
+        # U = U - mu*( tf.matmul(a, tf.matmul(atV, IpVtU))
+        #             -tf.matmul(b, tf.matmul(btV, IpVtU)) )
+        U.assign_sub(mu*( tf.matmul(a, tf.matmul(atV, IpVtU))
+                         -tf.matmul(b, tf.matmul(btV, IpVtU)) ))
     else:
         atU = tf.matmul(a, U, transpose_a=True)
         btU = tf.matmul(b, U, transpose_a=True)
         UUta = tf.matmul(U, atU, transpose_b=True)
         UUtb = tf.matmul(U, btU, transpose_b=True)
+        # taking abs before sqrt to avoid sqrt(-0.0...)
         norm = tf.sqrt(tf.abs( (tf.matmul(UUta, UUta, transpose_a=True)) * (tf.matmul(a, a, transpose_a=True))
                               +(tf.matmul(UUtb, UUtb, transpose_a=True)) * (tf.matmul(b, b, transpose_a=True))
                             -2*(tf.matmul(UUta, UUtb, transpose_a=True)) * (tf.matmul(a, b, transpose_a=True)) ))
-        mu = step/(norm + _tiny)
-        V = V - mu*( tf.matmul(a + tf.matmul(V, atU, transpose_b=True), atU)
-                    -tf.matmul(b + tf.matmul(V, btU, transpose_b=True), btU) )
+        mu = step/(norm + tiny)
+        # V = V - mu*( tf.matmul(a + tf.matmul(V, atU, transpose_b=True), atU)
+        #             -tf.matmul(b + tf.matmul(V, btU, transpose_b=True), btU) )
+        V.assign_sub(mu*( tf.matmul(a + tf.matmul(V, atU, transpose_b=True), atU)
+                         -tf.matmul(b + tf.matmul(V, btU, transpose_b=True), btU) ))
 
-    return [U, V, d]
+    # return [U, V, d]
 
 def precond_grad_UVd_math(U, V, d, g):
     """
@@ -619,53 +627,140 @@ def precond_grad_UVd_math(U, V, d, g):
     return g
 
 
-def update_precond_UVd(UVd, vs, hs, step=tf.constant(0.01)):
+class UVd:
     """
-    update UVd preconditioner Q = (I + U*V')*diag(d) with
-    vs: a list of vectors;
-    hs: a list of associated Hessian-vector products;
-    step: updating step size, setting to larger value, say 0.1, if updated sparsely. 
+    Implements low-rank modification (UVd) preconditioner, Q = U*V' + diag(d), as a class.
 
-    Also, U, V, and d are transposed (row-major order as Python convention), and 
-    packaged into one tensor. 
+    Args for initialization:
+        params_with_grad: a list of parameters or variables requiring gradients;
+        rank_of_modification: rank of modification, i.e., rank of U or V;
+        preconditioner_init_scale: initial scale of Q, or roughly, Q = preconditioner_init_scale*eye();
+        lr_params: normalized learning rate for parameters in range [0, 1];
+        lr_preconditioner: normalized learning rate for preconditioner in range [0, 1];
+        grad_clip_max_norm: maximum allowable gradient norm after clipping, None or np.inf for no clipping;
+        preconditioner_update_probability: probability on updating Q, 1 for updating at every step, and 0 for never;
+        exact_hessian_vector_product: True for exact Hessian-vector product via 2nd derivative,
+                                    and False for approximated one via finite-difference formulae.
+
+    Notes:
+        Note 1: The Hessian-vector product can be approximated using the finite-difference formulae by setting 
+        exact_hessian_vector_product = False when the 2nd derivatives is not available.
+        In this case, make sure that the closure produces the same outputs given the same inputs, 
+        except for numerical errors due to non-deterministic behaviors.
+        Random numbers, if any, used inside the closure should be generated starting from the same seed, 
+        e.g., by setting it with `tf.random.set_seed', where the seed can be generated from a numpy rng. 
+
+        Note 2: `tf.linalg.solve' is called twice in function `update_precond_UVd_math_'.
+        Certain solver could be orders of magnitude faster than others, especially for small matrices (see the pdf file).
+        Considering replace it with faster ones if the default solver is too slow.
+
+        Note 3: currently, no support of sparse and mixed-precision gradients. 
+        Half precision is supported except that tf.linalg.solve (v2.9.1) requires casting float16 to float32. 
+        
+        Note 4: reset lr_params, lr_preconditioner, grad_clip_max_norm, preconditioner_update_probability, and
+        exact_hessian_vector_product with `assign' explicitly, NOT `=', since they are variables after init. 
     """
-    UVd = tf.transpose(UVd)
-    U, V = tf.split(UVd[:,:-1], 2, axis=1)
-    d = UVd[:,-1:]
+    def __init__(self,  params_with_grad, rank_of_modification:int=10, preconditioner_init_scale=1.0,
+                        lr_params=0.01, lr_preconditioner=0.01,
+                        grad_clip_max_norm=None, preconditioner_update_probability=1.0,
+                        exact_hessian_vector_product:bool=True):
+        # flatten param list and double check trainable flag
+        params_with_grad = [params_with_grad,] if tf.is_tensor(params_with_grad) else params_with_grad
+        params_with_grad = tf.nest.flatten(params_with_grad)
+        self._params_with_grad = [param for param in params_with_grad if param.trainable]
+        self._dtype = self._params_with_grad[0].dtype
+        # mutable members
+        self.lr_params = tf.Variable(lr_params, dtype=self._dtype, trainable=False)
+        self.lr_preconditioner = tf.Variable(lr_preconditioner, dtype=self._dtype, trainable=False)
+        if grad_clip_max_norm is None:
+            self.grad_clip_max_norm = tf.Variable(tf.constant(1, dtype=self._dtype)/0, trainable=False) # set to inf 
+        else:
+            self.grad_clip_max_norm = tf.Variable(grad_clip_max_norm, dtype=self._dtype, trainable=False)
+        self.preconditioner_update_probability = tf.Variable(preconditioner_update_probability, dtype=self._dtype, trainable=False)
+        self.exact_hessian_vector_product = tf.Variable(exact_hessian_vector_product, dtype=bool, trainable=False)
+        # protected members
+        self._tiny = (lambda x=tf.constant(1, dtype=self._dtype), f=lambda x, f: f(x/2, f) if x/2>0 else x: f(x, f))()
+        self._delta_param_scale = ((lambda x=tf.constant(1, dtype=self._dtype), f=lambda x, f: f(x/2, f) if 1+x/2>1 else x: f(x, f))())**0.5
+        self._param_sizes = [tf.size(param).numpy() for param in self._params_with_grad]
+        self._param_cumsizes = tf.cumsum(self._param_sizes).numpy()
+        num_params = self._param_cumsizes[-1]
+        uv_scale = tf.cast((1/(num_params*rank_of_modification))**0.5, self._dtype)
+        self._U = tf.Variable(tf.random.normal([num_params, rank_of_modification], dtype=self._dtype)*uv_scale, trainable=False)
+        self._V = tf.Variable(tf.random.normal([num_params, rank_of_modification], dtype=self._dtype)*uv_scale, trainable=False)
+        self._d = tf.Variable(tf.ones(         [num_params, 1],   dtype=self._dtype)*preconditioner_init_scale, trainable=False)
 
-    v = tf.concat([tf.reshape(v, [-1]) for v in vs], 0)
-    h = tf.concat([tf.reshape(h, [-1]) for h in hs], 0)
-    U, V, d = update_precond_UVd_math(U, V, d, v[:,None], h[:,None], step=step)
-    UVd = tf.concat([U, V, d], 1)
-    return tf.transpose(UVd)
+    def step(self, closure):
+        """
+        Performs a single step of PSGD with low-rank modification (UVd) preconditioner, i.e., 
+        updating the trainable parameters once, and returning what closure returns.
 
-def precond_grad_UVd(UVd, grads):
-    """
-    return preconditioned gradient with UVd preconditioner Q = (I + U*V')*diag(d),
-    and a list of gradients, grads.
-    It is a wrapped version of function precond_grad_UVd_math for easy use.
-    
-    Also, U, V, and d are transposed (row-major order as Python convention), and 
-    packaged into one tensor.
-    """
-    UVd = tf.transpose(UVd)
-    U, V = tf.split(UVd[:,:-1], 2, axis=1)
-    d = UVd[:,-1:]
+        Args:
+            closure (callable): a closure that evaluates the function of self._params_with_grad,
+                                and returns the loss, or an iterable with the first one being loss.
+                                Random numbers, if any, used inside the closure should be generated starting 
+                                from the same seed if self.exact_hessian_vector_product = False; otherwise doesn't matter. 
+        """
+        if tf.random.uniform([], dtype=self._dtype) < self.preconditioner_update_probability:
+            update_Q = tf.constant(True, dtype=bool)
+            # evaluates gradients, Hessian-vector product, and updates the preconditioner
+            if self.exact_hessian_vector_product:
+                # exact Hessian-vector product
+                with tf.GradientTape() as g2nd:
+                    with tf.GradientTape() as g1st:
+                        closure_returns = closure()
+                        loss = closure_returns if tf.is_tensor(closure_returns) else closure_returns[0]
+                    grads = g1st.gradient(loss, self._params_with_grad)
+                    vs = [tf.random.normal(param.shape, dtype=self._dtype) for param in self._params_with_grad]
+                Hvs = g2nd.gradient(grads, self._params_with_grad, vs)
+            else:
+                # approximate Hessian-vector product via finite-difference formulae. Use it with cautions.
+                with tf.GradientTape() as g1st:
+                    closure_returns = closure()
+                    loss = closure_returns if tf.is_tensor(closure_returns) else closure_returns[0]
+                grads = g1st.gradient(loss, self._params_with_grad)
+                vs = [tf.random.normal(param.shape, stddev=self._delta_param_scale, dtype=self._dtype) for param in self._params_with_grad]
+                [param.assign_add(v) for (param, v) in zip(self._params_with_grad, vs)]
+                with tf.GradientTape() as g1st:
+                    perturbed_returns = closure()
+                    perturbed_loss = perturbed_returns if tf.is_tensor(perturbed_returns) else perturbed_returns[0]
+                perturbed_grads = g1st.gradient(perturbed_loss, self._params_with_grad)
+                Hvs = [perturbed_g - g for (perturbed_g, g) in zip(perturbed_grads, grads)]
+            # update preconditioner
+            v = tf.concat([tf.reshape(v, [-1]) for v in vs], 0)
+            h = tf.concat([tf.reshape(h, [-1]) for h in Hvs], 0)
+            if self.exact_hessian_vector_product:
+                update_precond_UVd_math_(self._U, self._V, self._d,
+                                         v[:,None], h[:,None], step=self.lr_preconditioner, tiny=self._tiny)
+            else: # compensate the levels of v and h; helpful to reduce numerical errors in half-precision training 
+                update_precond_UVd_math_(self._U, self._V, self._d,
+                                         v[:,None]/self._delta_param_scale, h[:,None]/self._delta_param_scale, step=self.lr_preconditioner, tiny=self._tiny)
+        else:
+            update_Q = tf.constant(False, dtype=bool)
+            # only evaluates the gradients
+            with tf.GradientTape() as g1st:
+                closure_returns = closure()
+                loss = closure_returns if tf.is_tensor(closure_returns) else closure_returns[0]
+            grads = g1st.gradient(loss, self._params_with_grad)
+            vs = [tf.zeros([0], dtype=self._dtype) for param in self._params_with_grad]
 
-    # record the sizes and shapes, and then flatten gradients
-    sizes = [tf.size(g) for g in grads]
-    shapes = [tf.shape(g) for g in grads]
-    i, cumsizes = 0, [] # cannot use cumsizes = tf.math.cumsum(sizes) in graph mode here
-    for size in sizes:
-        i += size
-        cumsizes.append(i)
-    
-    grad = tf.concat([tf.reshape(g, [-1]) for g in grads], 0)
-
-    # precondition gradients
-    pre_grad = precond_grad_UVd_math(U, V, d, grad[:,None])
-
-    # restore gradients to their original shapes
-    return [tf.reshape(pre_grad[j-i:j], s) for (i, j, s) in zip(sizes, cumsizes, shapes)]
+        # preconditioned gradients
+        grad = tf.concat([tf.reshape(g, [-1]) for g in grads], 0)
+        pre_grad = precond_grad_UVd_math(self._U, self._V, self._d, grad[:, None])
+        # gradient clipping is optional
+        if tf.math.is_inf(self.grad_clip_max_norm):
+            lr = self.lr_params
+        else:
+            grad_norm = tf.sqrt(tf.reduce_sum(pre_grad*pre_grad)) + self._tiny
+            lr = self.lr_params * tf.minimum(self.grad_clip_max_norm/grad_norm, 1.0)
+            
+        # update the parameters
+        if self.exact_hessian_vector_product or (not update_Q):
+            [param.assign_sub(lr * tf.reshape(pre_grad[j - i:j], param.shape))
+             for (param, i, j) in zip(self._params_with_grad, self._param_sizes, self._param_cumsizes)]
+        else: # in this case, do not forget to remove the perturbation on parameters
+            [param.assign_sub(lr * tf.reshape(pre_grad[j - i:j], param.shape) + v)
+             for (param, i, j, v) in zip(self._params_with_grad, self._param_sizes, self._param_cumsizes, vs)]
+        # return whatever closure returns
+        return closure_returns
 
 ################## end of UVd preconditioner #################################

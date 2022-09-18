@@ -1,10 +1,13 @@
 ## Tensorflow implementation of PSGD  
 
-### New general purpose preconditioners 
+### Scalable black box preconditioners (recent updates)
+[This pdf file](https://drive.google.com/file/d/1CTNx1q67_py87jn-0OI-vSLcsM1K7VsM/view?usp=sharing) documents the math of a few recently developed black box preconditioners. I categorize all of them into three families, and two are new. 
 
-Kronecker-product preconditioner is powerful, but inconvenient to use as we need to sort out the parameters to be optimized in certain ways such that their corresponding preconditioners do meaningful operations. [This pdf file](https://drive.google.com/file/d/1CTNx1q67_py87jn-0OI-vSLcsM1K7VsM/view?usp=sharing) documents the math of a few promising new general purpose preconditioners.
+*Matrix free preconditioners*: We can construct highly sparse preconditioners from a low order subgroup of the permutation group. The diagonal or Jacobi preconditioner works, but not good enough ([benchmarked here](https://github.com/lixilinx/psgd_tf/releases/tag/1.3)). The butterfly and X-shape matrix preconditioners perform much better by connecting gradients far away in positions.        
 
-* Preconditioner UVd:  Q = U*V'+diag(d). It is tricky to update this one on Lie groups, but it performs well and solves the delayed XOR problem reliably. 
+*Low rank approximation preconditioner*: This group has form Q = U*V'+diag(d), thus simply called the UVd preconditioner. Unlike the standard low rank approximation, this form can fit both ends (large and small) of the spectra of Hessian, and scales to problems with millions of parameters. 
+
+*Preconditioners for affine transform matrices*: Not really black box ones. Just need to wrap previous functional implementations as a class for easy use. 
 
 ### An overview
 PSGD (preconditioned stochastic gradient descent) is a general purpose second-order optimization method. PSGD differentiates itself from most existing methods by its inherent abilities of handling nonconvexity and gradient noises. Please refer to the [original paper](https://arxiv.org/abs/1512.04202) for its designing ideas. 
@@ -28,8 +31,6 @@ For example, a left or right preconditioner with dimension [*N*, *N*] is dense; 
 *mnist_with_lenet5.py*: demonstration of PSGD on convolutional neural network training with the classic LeNet5 for MNIST digits recognition. With multiple runs, PSGD is likely to achieve test classification error rate below 0.7%, which is considerably lower than other optimization methods like SGD, momentum, Adam, KFAC, etc.  
 
 *lstm_with_xor_problem.py*: demonstration of PSGD on gated recurrent neural network training with the delayed XOR problem proposed in the original [LSTM paper](https://www.researchgate.net/publication/13853244_Long_Short-term_Memory). Note that neither LSTM nor the vanilla RNN can solve this 'simple' problem with first order optimization method. PSGD is likely to solve it with either the LSTM or the simplest vanilla RNN (check the [archived code](https://github.com/lixilinx/psgd_tf/releases/tag/1.3) for more details). It successes in most of the runs with the given parameter settings. 
-
-*neural_machine_translation_with_attention.py*: demonstrate the usage of PSGD to NMT with different Kronecker-product preconditioners, and both approximate and exact Hessian-vector products. Just pay attention to the organization of code. 
 
 *demo_usage_of_all_preconditioners.py*: demonstrate the usage of all implemented preconditioners on the tensor decomposition math problem. Note that all kinds of Kronecker product preconditioners share the same way of usage. You just need to pay attention to its initializations. Typical preconditioner initial guesses are (up to a positive scaling difference): identity matrix for a dense preconditioner; [[1,1,...,1],[0,0,...,0]] for normalization preconditioner; and [1,1,...,1] for scaling preconditioner.  
 
